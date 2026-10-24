@@ -1,15 +1,16 @@
 const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/AppError');
-const { ageOnSeptemberFirst } = require('../../domain/age');
-const { tuitionMonthly, mealMonthly, monthlyTotal, yearlyTotal } = require('../../domain/pricing');
+const { tuitionMonthly, monthlyTotal, yearlyTotal } = require('../../domain/pricing');
+const { settingsService } = require('../settings/settings.service');
 const { billingRepository } = require('./billing.repository');
-const { startOfUtcDay, addMonthsUtc, academicYearOf, toIsoDate } = require('./billing.dates');
+const { startOfUtcDay, addMonthsUtc, toIsoDate } = require('./billing.dates');
 
 const CURRENCY = 'UAH'; // All amounts are stored in kopiykas
 const MONTHS_BY_PLAN = Object.freeze({ MONTHLY: 1, YEARLY: 12 });
 
 class BillingService {
-  constructor(repository = billingRepository) {
+  constructor(repository = billingRepository, settings = settingsService) {
     this.repository = repository;
+    this.settings = settings;
   }
 
   /** Admin and Manager can access any child; a Parent can only access their own (returns "not found" for others) */
@@ -22,17 +23,48 @@ class BillingService {
     return child;
   }
 
-  calculate(child, now) {
-    const age = ageOnSeptemberFirst(child.birthDate, academicYearOf(now));
+  /** Prices come from the settings cache; meals are charged by the age of the child's group, not the child's own age */
+  calculate(child) {
+    if (!child.group) {
+      throw new BadRequestError(
+        'Child is not assigned to a group: meal price depends on the group age'
+      );
+    }
+    const groupAge = child.group.age;
     const discount = child.discountPercent;
+    const tuition = this.settings.get('TUITION_MONTHLY');
+    const levels = this.settings.get('DISCOUNT_LEVELS');
+    const basePerDay = this.settings.get('MEAL_BASE_PER_DAY');
+    const perExtraYear = this.settings.get('MEAL_PER_EXTRA_YEAR');
+    const yearlyDiscount = this.settings.get('YEARLY_DISCOUNT_PERCENT');
+
+    const monthlyTuition = tuitionMonthly(discount, tuition, levels);
+    const monthlyTotalAmount = monthlyTotal(
+      groupAge,
+      discount,
+      tuition,
+      levels,
+      basePerDay,
+      perExtraYear
+    );
     return {
-      age,
+      groupAge,
       monthly: {
-        tuition: tuitionMonthly(discount),
-        meals: mealMonthly(age),
-        total: monthlyTotal(age, discount),
+        tuition: monthlyTuition,
+        meals: monthlyTotalAmount - monthlyTuition,
+        total: monthlyTotalAmount,
       },
-      yearly: { total: yearlyTotal(age, discount) },
+      yearly: {
+        total: yearlyTotal(
+          groupAge,
+          discount,
+          tuition,
+          levels,
+          yearlyDiscount,
+          basePerDay,
+          perExtraYear
+        ),
+      },
     };
   }
 
@@ -43,13 +75,13 @@ class BillingService {
   /** Calculates billing details and payment due date for a child */
   async getChildBilling(user, childId, now = new Date()) {
     const child = await this.loadAccessibleChild(user, childId);
-    const bill = this.calculate(child, now);
+    const bill = this.calculate(child);
     const today = startOfUtcDay(now);
 
     return {
       childId: child.id,
       fullName: child.fullName,
-      age: bill.age,
+      groupAge: bill.groupAge,
       discountPercent: child.discountPercent,
       paymentPlan: child.paymentPlan,
       currency: CURRENCY,
@@ -69,7 +101,7 @@ class BillingService {
     }
 
     const chosenPlan = plan ?? child.paymentPlan;
-    const amount = this.amountFor(chosenPlan, this.calculate(child, now));
+    const amount = this.amountFor(chosenPlan, this.calculate(child));
 
     const today = startOfUtcDay(now);
     const base = child.paidUntil && child.paidUntil > today ? child.paidUntil : today;

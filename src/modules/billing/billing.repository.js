@@ -12,11 +12,11 @@ class BillingRepository {
       select: {
         id: true,
         fullName: true,
-        birthDate: true,
         discountPercent: true,
         paymentPlan: true,
         paidUntil: true,
         isActive: true,
+        group: { select: { age: true } },
         parents: { select: { parent: { select: { userId: true } } } },
       },
     });
