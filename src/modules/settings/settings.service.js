@@ -1,23 +1,23 @@
-const { AppError, NotFoundError } = require('../../errors/AppError');
+const { AppError, BadRequestError, NotFoundError } = require('../../errors/AppError');
 const { settingsRepository } = require('./settings.repository');
-
-/**
- * Normalizes a key to CONSTANT_CASE.
- * Example: 'tuitionMonthly' | 'TUITION_MONTHLY' | 'tuition-monthly' -> 'TUITION_MONTHLY'
- * 
- * @param {string} key
- * @returns {string}
- */
-function toConstantCase(key) {
-  return String(key)
-    .trim()
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .replace(/[\s-]+/g, '_')
-    .toUpperCase();
-}
+const { DEFINITIONS_BY_CONSTANT, toConstantCase } = require('./settings.definitions');
 
 function freezeValue(value) {
   return Array.isArray(value) ? Object.freeze([...value]) : value;
+}
+
+function buildDefaultCache() {
+  const cache = {};
+  for (const [constantKey, definition] of Object.entries(DEFINITIONS_BY_CONSTANT)) {
+    cache[constantKey] = freezeValue(definition.default);
+  }
+  return cache;
+}
+
+function buildDefaultDbKeys() {
+  return new Map(
+    Object.entries(DEFINITIONS_BY_CONSTANT).map(([constantKey, { dbKey }]) => [constantKey, dbKey])
+  );
 }
 
 /**
@@ -31,9 +31,9 @@ function freezeValue(value) {
 class SettingsService {
   constructor(repository = settingsRepository) {
     this.repository = repository;
-    this.cache = Object.freeze({}); // { TUITION_MONTHLY: 1500000, ... }
-    this.dbKeys = new Map(); // 'TUITION_MONTHLY' -> 'tuitionMonthly' (as key is stored in the DB)
-    this.loaded = false;
+    this.cache = Object.freeze(buildDefaultCache());
+    this.dbKeys = buildDefaultDbKeys();
+    this.loaded = true;
     this.loading = null;
   }
 
@@ -57,10 +57,15 @@ class SettingsService {
    */
   async refresh() {
     const rows = await this.repository.findAll();
-    const cache = {};
-    const dbKeys = new Map();
+    const cache = buildDefaultCache();
+    const dbKeys = buildDefaultDbKeys();
     for (const row of rows) {
       const key = toConstantCase(row.key);
+      const definition = DEFINITIONS_BY_CONSTANT[key];
+      if (definition && !definition.schema.safeParse(row.value).success) {
+        console.warn(`[settings] Invalid value for "${row.key}" in DB — default is used`);
+        continue;
+      }
       cache[key] = freezeValue(row.value);
       dbKeys.set(key, row.key);
     }
@@ -112,9 +117,20 @@ class SettingsService {
       throw new NotFoundError(`Setting not found: ${key}`);
     }
 
-    const row = await this.repository.update(dbKey, value);
+    this.assertConsistent(normalized, value);
+
+    const row = await this.repository.upsert(dbKey, value);
     this.cache = Object.freeze({ ...this.cache, [normalized]: freezeValue(row.value) });
     return { key: normalized, value: this.cache[normalized] };
+  }
+
+  assertConsistent(key, value) {
+    if (key === 'GROUP_EXTRA_PAY_THRESHOLD' && value > this.cache.MAX_CHILDREN_IN_GROUP) {
+      throw new BadRequestError('Extra-pay threshold cannot exceed the max children in a group');
+    }
+    if (key === 'MAX_CHILDREN_IN_GROUP' && value < this.cache.GROUP_EXTRA_PAY_THRESHOLD) {
+      throw new BadRequestError('Max children in a group cannot be below the extra-pay threshold');
+    }
   }
 }
 

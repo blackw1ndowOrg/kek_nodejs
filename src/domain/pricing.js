@@ -1,24 +1,19 @@
 const { BadRequestError } = require('../errors/AppError');
 
-// Ціни для батьків, всі ціни в копійках
-// Множимо до ділення, щоб не мати пройобів в float (замість * 0.88 — * 88 / 100).
-const TUITION_MONTHLY = 1500000;
-const ALLOWED_DISCOUNTS = Object.freeze([0, 10, 20, 30]); // відсотки
-const MEAL_BASE_PER_DAY = 30000; // 300 грн для 2-річних
-const MEAL_STEP_PER_YEAR = 10000; // +100 грн за кожен наступний рік
+// Ціни для батьків, всі суми в копійках.
+// Множимо до ділення, щоб не мати похибок float (замість * 0.88 — * 88 / 100).
+// Ціни, знижки й робочі дні приходять параметрами (значення з таблиці Setting);
+// значення за замовчуванням — з ТЗ.
 const MIN_AGE = 2;
 const MAX_AGE = 5;
-const WORKING_DAYS_PER_MONTH = 21;
-const WORKING_DAYS_PER_YEAR = 252;
+const NO_DISCOUNT = 0; // без пільги можна завжди, у discountLevels лише пільгові рівні
 const MONTHS_PER_YEAR = 12;
-const YEARLY_TUITION_DISCOUNT_PERCENT = 12; // знижка 12% на навчання при оплаті за рік вперед (не діє на харчування)
 const PERCENT_BASE = 100;
 
-function assertDiscount(discountPercent) {
-  if (!ALLOWED_DISCOUNTS.includes(discountPercent)) {
-    throw new BadRequestError(
-      `Discount must be one of ${ALLOWED_DISCOUNTS.join(', ')}: ${discountPercent}`,
-    );
+function assertDiscount(discountPercent, discountLevels) {
+  const allowed = [NO_DISCOUNT, ...discountLevels];
+  if (!allowed.includes(discountPercent)) {
+    throw new BadRequestError(`Discount must be one of ${allowed.join(', ')}: ${discountPercent}`);
   }
 }
 
@@ -37,37 +32,57 @@ function assertDays(days) {
 const applyPercentDiscount = (amount, percent) =>
   Math.round((amount * (PERCENT_BASE - percent)) / PERCENT_BASE);
 
-/** Навчання за місяць зі знижкою 0/10/20/30% */
-function tuitionMonthly(discountPercent) {
-  assertDiscount(discountPercent);
-  return applyPercentDiscount(TUITION_MONTHLY, discountPercent);
+/** Навчання за місяць зі знижкою 0 або одним із discountLevels */
+function tuitionMonthly(discountPercent, tuition = 1500000, discountLevels = [10, 20, 30]) {
+  assertDiscount(discountPercent, discountLevels);
+  return applyPercentDiscount(tuition, discountPercent);
 }
 
-/** Харчування за день */
-function mealPerDay(age) {
+/** Харчування за день: basePerDay для 2-річних, +perExtraYear за кожен наступний рік */
+function mealPerDay(age, basePerDay = 30000, perExtraYear = 10000) {
   assertAge(age);
-  return MEAL_BASE_PER_DAY + MEAL_STEP_PER_YEAR * (age - MIN_AGE);
+  return basePerDay + perExtraYear * (age - MIN_AGE);
 }
 
 /** Харчування за місяць */
-function mealMonthly(age, workingDays = WORKING_DAYS_PER_MONTH) {
+function mealMonthly(age, workingDays = 21, basePerDay = 30000, perExtraYear = 10000) {
   assertDays(workingDays);
-  return mealPerDay(age) * workingDays;
+  return mealPerDay(age, basePerDay, perExtraYear) * workingDays;
 }
 
 /** До оплати за місяць з навчанням і харчуванням */
-function monthlyTotal(age, discountPercent) {
-  return tuitionMonthly(discountPercent) + mealMonthly(age);
+function monthlyTotal(
+  age,
+  discountPercent,
+  tuition = 1500000,
+  discountLevels = [10, 20, 30],
+  basePerDay = 30000,
+  perExtraYear = 10000,
+  workingDays = 21
+) {
+  return (
+    tuitionMonthly(discountPercent, tuition, discountLevels) +
+    mealMonthly(age, workingDays, basePerDay, perExtraYear)
+  );
 }
 
-/** До оплати за рік (знижка 12% на навчання при оплаті на рік наперед; пільги на їжу не діють) */
-function yearlyTotal(age, discountPercent) {
-  const tuition = applyPercentDiscount(
-    tuitionMonthly(discountPercent) * MONTHS_PER_YEAR,
-    YEARLY_TUITION_DISCOUNT_PERCENT,
+/** До оплати за рік: знижка yearlyDiscountPercent на навчання, на харчування не діє */
+function yearlyTotal(
+  age,
+  discountPercent,
+  tuition = 1500000,
+  discountLevels = [10, 20, 30],
+  yearlyDiscountPercent = 12,
+  basePerDay = 30000,
+  perExtraYear = 10000,
+  workingDaysPerYear = 252
+) {
+  const yearlyTuition = applyPercentDiscount(
+    tuitionMonthly(discountPercent, tuition, discountLevels) * MONTHS_PER_YEAR,
+    yearlyDiscountPercent
   );
-  const meals = mealPerDay(age) * WORKING_DAYS_PER_YEAR;
-  return tuition + meals;
+  const meals = mealPerDay(age, basePerDay, perExtraYear) * workingDaysPerYear;
+  return yearlyTuition + meals;
 }
 
 module.exports = {
@@ -76,6 +91,6 @@ module.exports = {
   mealMonthly,
   monthlyTotal,
   yearlyTotal,
-  ALLOWED_DISCOUNTS,
-  WORKING_DAYS_PER_MONTH,
+  MIN_AGE,
+  MAX_AGE,
 };

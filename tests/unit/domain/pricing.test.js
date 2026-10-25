@@ -4,7 +4,8 @@ const {
   mealMonthly,
   monthlyTotal,
   yearlyTotal,
-  ALLOWED_DISCOUNTS,
+  MIN_AGE,
+  MAX_AGE,
 } = require('../../../src/domain/pricing');
 const { BadRequestError } = require('../../../src/errors/AppError');
 
@@ -52,7 +53,7 @@ describe('mealMonthly', () => {
     expect(() => mealMonthly(4, days)).toThrow(BadRequestError);
   });
 
-  test.each(ALLOWED_DISCOUNTS)('знижка %i%% не впливає на харчування', (discount) => {
+  test.each([0, 10, 20, 30])('знижка %i%% не впливає на харчування', (discount) => {
     expect(monthlyTotal(4, discount) - tuitionMonthly(discount)).toBe(mealMonthly(4));
   });
 });
@@ -78,5 +79,36 @@ describe('yearlyTotal', () => {
   test('невалідні дані -> BadRequestError', () => {
     expect(() => yearlyTotal(6, 0)).toThrow(BadRequestError);
     expect(() => yearlyTotal(4, 15)).toThrow(BadRequestError);
+  });
+});
+
+describe('значення з налаштувань передаються параметрами', () => {
+  test('MIN_AGE і MAX_AGE експортуються', () => {
+    expect([MIN_AGE, MAX_AGE]).toEqual([2, 5]);
+  });
+
+  test('tuitionMonthly: інша ціна й інші рівні пільг, 0 дозволено завжди', () => {
+    expect(tuitionMonthly(10, 1000000)).toBe(900000);
+    expect(tuitionMonthly(50, 1500000, [50])).toBe(750000);
+    expect(tuitionMonthly(0, 1500000, [50])).toBe(1500000);
+    expect(() => tuitionMonthly(10, 1500000, [50])).toThrow(BadRequestError);
+  });
+
+  test('mealPerDay: інша база і крок', () => {
+    expect(mealPerDay(4, 20000, 5000)).toBe(30000);
+  });
+
+  test('mealMonthly: днів і ціни передаються далі в mealPerDay', () => {
+    expect(mealMonthly(4, 20, 20000, 5000)).toBe(600000);
+  });
+
+  test('monthlyTotal: усі параметри доходять до складових', () => {
+    // навчання 10 000 · 0,5 = 5 000 грн; харчування (200 + 50 · 2) · 20 = 6 000 грн
+    expect(monthlyTotal(4, 50, 1000000, [50], 20000, 5000, 20)).toBe(1100000);
+  });
+
+  test('yearlyTotal: усі параметри доходять до складових', () => {
+    // навчання 10 000 · 12 · 0,9 = 108 000 грн; харчування 300 · 200 = 60 000 грн
+    expect(yearlyTotal(4, 0, 1000000, [10], 10, 20000, 5000, 200)).toBe(16800000);
   });
 });

@@ -12,6 +12,10 @@ class SettingsRepository {
   async update(key, value) {
     return this.db.setting.update({ where: { key }, data: { value } });
   }
+
+  async upsert(key, value) {
+    return this.db.setting.upsert({ where: { key }, update: { value }, create: { key, value } });
+  }
 }
 
 const settingsRepository = new SettingsRepository();
