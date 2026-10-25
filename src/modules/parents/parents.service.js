@@ -75,7 +75,19 @@ class ParentsService {
       throw new NotFoundError('Батьків з таким ID не знайдено');
     }
 
-    return this.repository.delete(id);
+    // Бізнес-перевірка: заборона видалення батьків з активним боргом
+    if (existing.debt > 0) {
+      throw new ConflictError(
+        'Неможливо видалити профіль батьків з непогашеним боргом'
+      );
+    }
+
+    return this.db.$transaction(async (tx) => {
+      await this.repository.delete(id, tx);
+      if (existing.userId) {
+        await tx.user.delete({ where: { id: existing.userId } });
+      }
+    });
   }
 }
 
