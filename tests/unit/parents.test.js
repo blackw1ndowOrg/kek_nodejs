@@ -6,6 +6,7 @@ const {
   createParentSchema,
   updateParentSchema,
   parentIdParamSchema,
+  parentsQuerySchema,
 } = require('../../src/modules/parents/parents.schema');
 
 describe('Parents Module - Unit Tests', () => {
@@ -80,6 +81,16 @@ describe('Parents Module - Unit Tests', () => {
       expect(parsed.fullName).toBe('Нове Ім\'я');
       expect(parsed.debt).toBe(20000);
     });
+
+    test('query-схема: валідний search передається як рядок', () => {
+      const parsed = parentsQuerySchema.parse({ query: { search: 'Іван' } });
+      expect(parsed.query.search).toBe('Іван');
+    });
+
+    test('query-схема: порожній query проходить валідацію', () => {
+      const parsed = parentsQuerySchema.parse({ query: {} });
+      expect(parsed.query.search).toBeUndefined();
+    });
   });
 
   describe('ParentsService', () => {
@@ -119,7 +130,6 @@ describe('Parents Module - Unit Tests', () => {
 
       const result = await service.createParent(data);
 
-      expect(mockDb.user.findUnique).not.toHaveBeenCalled();
       expect(mockRepo.create).toHaveBeenCalledWith(
         { fullName: data.fullName, phone: data.phone, debt: 0, userId: null },
         mockDb
@@ -127,17 +137,31 @@ describe('Parents Module - Unit Tests', () => {
       expect(result.id).toBe(1);
     });
 
-    test('createParent: викидає ConflictError якщо email вже зайнятий', async () => {
+    test('createParent: кидає ConflictError при P2002 від Prisma (race condition)', async () => {
       const data = {
         fullName: 'Сидоренко Василь',
         phone: '+380991234567',
         user: { email: 'vasyl@test.com', password: 'secretPassword' },
       };
 
-      mockDb.user.findUnique.mockResolvedValueOnce({ id: 99, email: data.user.email });
+      const prismaError = new Error('Unique constraint failed');
+      prismaError.code = 'P2002';
+      mockDb.$transaction.mockRejectedValueOnce(prismaError);
 
       await expect(service.createParent(data)).rejects.toThrow(ConflictError);
-      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
+
+    test('createParent: перекидає не-P2002 помилки як є', async () => {
+      const data = {
+        fullName: 'Сидоренко Василь',
+        phone: '+380991234567',
+        user: { email: 'vasyl@test.com', password: 'secretPassword' },
+      };
+
+      const networkError = new Error('Connection refused');
+      mockDb.$transaction.mockRejectedValueOnce(networkError);
+
+      await expect(service.createParent(data)).rejects.toThrow('Connection refused');
     });
 
     test('createParent: успішно створює юзера та батьків у транзакції', async () => {
@@ -148,7 +172,6 @@ describe('Parents Module - Unit Tests', () => {
         user: { email: 'vasyl@test.com', password: 'secretPassword' },
       };
 
-      mockDb.user.findUnique.mockResolvedValueOnce(null);
       mockDb.user.create.mockResolvedValueOnce({
         id: 10,
         email: data.user.email,
@@ -183,6 +206,13 @@ describe('Parents Module - Unit Tests', () => {
 
       expect(mockRepo.findAll).toHaveBeenCalledWith({ search: 'Мама' });
       expect(result).toEqual(parents);
+    });
+
+    test('getAllParents: працює без передачі параметрів (дефолтний query)', async () => {
+      mockRepo.findAll.mockResolvedValueOnce([]);
+      const result = await service.getAllParents();
+      expect(mockRepo.findAll).toHaveBeenCalledWith({});
+      expect(result).toEqual([]);
     });
 
     test('getParentById: повертає батьків, якщо знайдено', async () => {

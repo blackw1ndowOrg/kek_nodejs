@@ -6,16 +6,16 @@ const {
   createParentSchema,
   updateParentSchema,
   parentIdParamSchema,
+  parentsQuerySchema,
 } = require('./parents.schema');
 const { parentsController } = require('./parents.controller');
 
 const router = Router();
 
-// Захист усіх роутів: тільки ADMIN та MANAGER
 router.use(auth, authorize('ADMIN', 'MANAGER'));
 
 router.post('/', validate(createParentSchema), parentsController.create);
-router.get('/', parentsController.getAll);
+router.get('/', validate(parentsQuerySchema), parentsController.getAll);
 router.get('/:id', validate(parentIdParamSchema), parentsController.getById);
 router.patch(
   '/:id',

@@ -10,42 +10,45 @@ class ParentsService {
   }
 
   async createParent({ fullName, phone, debt = 0, user }) {
+    // Хешуємо пароль ДО транзакції (важка CPU-операція)
+    let passwordHash = null;
     if (user) {
-      const existingUser = await this.db.user.findUnique({
-        where: { email: user.email },
-      });
-
-      if (existingUser) {
-        throw new ConflictError('Користувач з таким email вже існує');
-      }
+      passwordHash = await bcrypt.hash(user.password, 10);
     }
 
-    return this.db.$transaction(async (tx) => {
-      let createdUser = null;
+    try {
+      return await this.db.$transaction(async (tx) => {
+        let createdUser = null;
 
-      if (user) {
-        const passwordHash = await bcrypt.hash(user.password, 10);
-        createdUser = await tx.user.create({
-          data: {
-            email: user.email,
-            passwordHash,
-            role: 'PARENT',
+        if (user) {
+          createdUser = await tx.user.create({
+            data: {
+              email: user.email,
+              passwordHash,
+              role: 'PARENT',
+            },
+          });
+        }
+
+        const parent = await this.repository.create(
+          {
+            fullName,
+            phone,
+            debt,
+            userId: createdUser ? createdUser.id : null,
           },
-        });
+          tx
+        );
+
+        return parent;
+      });
+    } catch (err) {
+      // Обробка помилки унікальності email від Prisma (race condition)
+      if (err.code === 'P2002') {
+        throw new ConflictError('Користувач з таким email вже існує');
       }
-
-      const parent = await this.repository.create(
-        {
-          fullName,
-          phone,
-          debt,
-          userId: createdUser ? createdUser.id : null,
-        },
-        tx
-      );
-
-      return parent;
-    });
+      throw err;
+    }
   }
 
   async getAllParents(query = {}) {
@@ -75,7 +78,6 @@ class ParentsService {
       throw new NotFoundError('Батьків з таким ID не знайдено');
     }
 
-    // Бізнес-перевірка: заборона видалення батьків з активним боргом
     if (existing.debt > 0) {
       throw new ConflictError(
         'Неможливо видалити профіль батьків з непогашеним боргом'

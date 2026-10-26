@@ -54,25 +54,6 @@ class ParentsRepository {
     });
   }
 
-  async findByUserId(userId) {
-    return this.db.parent.findUnique({
-      where: { userId },
-      include: {
-        children: {
-          include: {
-            child: true,
-          },
-        },
-      },
-    });
-  }
-
-  async findByPhone(phone) {
-    return this.db.parent.findFirst({
-      where: { phone },
-    });
-  }
-
   async create(data, tx) {
     const client = tx || this.db;
     return client.parent.create({

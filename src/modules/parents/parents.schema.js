@@ -9,6 +9,12 @@ const parentIdParamSchema = z.object({
   }),
 });
 
+const parentsQuerySchema = z.object({
+  query: z.object({
+    search: z.string().trim().optional(),
+  }),
+});
+
 const phoneSchema = z
   .string()
   .trim()
@@ -58,4 +64,5 @@ module.exports = {
   createParentSchema,
   updateParentSchema,
   parentIdParamSchema,
+  parentsQuerySchema,
 };
