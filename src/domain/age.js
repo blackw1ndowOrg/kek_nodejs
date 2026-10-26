@@ -33,4 +33,19 @@ function ageOnSeptemberFirst(birthDate, targetYear) {
   return birthdayNotYetCome ? years - 1 : years;
 }
 
-module.exports = { ageOnSeptemberFirst };
+/**
+ * Рік, з якого почався поточний навчальний рік (навчальний рік триває з 1 вересня по 31 серпня).
+ * Передається в ageOnSeptemberFirst як targetYear: 24.10.2026 і 01.03.2027 -> 2026.
+ *
+ * @param {Date} [date] дата, для якої визначаємо навчальний рік (за замовчуванням — зараз)
+ * @returns {number}
+ */
+function currentAcademicYear(date = new Date()) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    throw new BadRequestError(`Invalid date: ${date}`);
+  }
+  const year = date.getUTCFullYear();
+  return date.getUTCMonth() >= SEPTEMBER ? year : year - 1;
+}
+
+module.exports = { ageOnSeptemberFirst, currentAcademicYear };
