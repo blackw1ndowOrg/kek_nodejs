@@ -98,7 +98,15 @@ describe('Parents Integration Tests (Supertest)', () => {
   });
 
   describe('GET /api/v1/parents/:id', () => {
-    test('повертає 404 якщо батьків за ID не знайдено', async () => {
+    test('повертає 400 якщо id не числовий', async () => {
+      const res = await request(app)
+        .get('/api/v1/parents/abc')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+    });
+
+    test('повертає 404 якщо батьків не знайдено', async () => {
       jest.spyOn(parentsRepository, 'findById').mockResolvedValueOnce(null);
 
       const res = await request(app)
@@ -108,26 +116,27 @@ describe('Parents Integration Tests (Supertest)', () => {
       expect(res.status).toBe(StatusCodes.NOT_FOUND);
     });
 
-    test('повертає 200 та знайдений об\'єкт батьків', async () => {
+    test('повертає 200 та об\'єкт батьків', async () => {
       jest.spyOn(parentsRepository, 'findById').mockResolvedValueOnce({
-        id: 42,
-        fullName: 'Тарас Шевченко',
+        id: 1,
+        fullName: 'Петро',
         phone: '+380501112233',
         debt: 0,
+        children: [],
       });
 
       const res = await request(app)
-        .get('/api/v1/parents/42')
+        .get('/api/v1/parents/1')
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(StatusCodes.OK);
-      expect(res.body.id).toBe(42);
-      expect(res.body.fullName).toBe('Тарас Шевченко');
+      expect(res.body.id).toBe(1);
+      expect(res.body.fullName).toBe('Петро');
     });
   });
 
   describe('PATCH /api/v1/parents/:id', () => {
-    test('повертає 200 та оновлює дані батьків', async () => {
+    test('повертає 200 та оновлені дані', async () => {
       jest.spyOn(parentsRepository, 'findById').mockResolvedValueOnce({
         id: 42,
         fullName: 'Старе Ім\'я',
@@ -155,6 +164,28 @@ describe('Parents Integration Tests (Supertest)', () => {
       jest.spyOn(parentsRepository, 'findById').mockResolvedValueOnce({
         id: 5,
         debt: 50000, // є борг
+      });
+
+      const res = await request(app)
+        .delete('/api/v1/parents/5')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(StatusCodes.CONFLICT);
+    });
+
+    test('повертає 409 Conflict при спробі видалити батьків якщо активна дитина залишиться без інших батьків', async () => {
+      jest.spyOn(parentsRepository, 'findById').mockResolvedValueOnce({
+        id: 5,
+        debt: 0,
+        children: [
+          {
+            child: {
+              id: 20,
+              isActive: true,
+              parents: [{ parentId: 5 }],
+            },
+          },
+        ],
       });
 
       const res = await request(app)

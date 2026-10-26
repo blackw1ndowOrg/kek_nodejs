@@ -60,9 +60,15 @@ const updateParentSchema = z.object({
     .optional(),
 });
 
+const updateParentRouteSchema = z.object({
+  params: parentIdParamSchema.shape.params,
+  body: updateParentSchema,
+});
+
 module.exports = {
   createParentSchema,
   updateParentSchema,
+  updateParentRouteSchema,
   parentIdParamSchema,
   parentsQuerySchema,
 };

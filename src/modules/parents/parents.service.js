@@ -84,6 +84,23 @@ class ParentsService {
       );
     }
 
+    // Захист: заборона видалення, якщо активна дитина залишиться без жодних зареєстрованих батьків
+    if (existing.children && existing.children.length > 0) {
+      const leavesOrphanChild = existing.children.some(({ child }) => {
+        if (!child || !child.isActive) return false;
+        const otherParents = child.parents
+          ? child.parents.filter((p) => p.parentId !== id)
+          : [];
+        return otherParents.length === 0;
+      });
+
+      if (leavesOrphanChild) {
+        throw new ConflictError(
+          'Неможливо видалити батьків: у активної дитини немає інших зареєстрованих батьків'
+        );
+      }
+    }
+
     return this.db.$transaction(async (tx) => {
       await this.repository.delete(id, tx);
       if (existing.userId) {

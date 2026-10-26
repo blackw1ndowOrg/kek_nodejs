@@ -47,7 +47,13 @@ class ParentsRepository {
         },
         children: {
           include: {
-            child: true,
+            child: {
+              include: {
+                parents: {
+                  select: { parentId: true },
+                },
+              },
+            },
           },
         },
       },

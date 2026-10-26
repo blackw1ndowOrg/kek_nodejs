@@ -5,6 +5,7 @@ const { NotFoundError, ConflictError } = require('../../src/errors/AppError');
 const {
   createParentSchema,
   updateParentSchema,
+  updateParentRouteSchema,
   parentIdParamSchema,
   parentsQuerySchema,
 } = require('../../src/modules/parents/parents.schema');
@@ -80,6 +81,15 @@ describe('Parents Module - Unit Tests', () => {
       });
       expect(parsed.fullName).toBe('Нове Ім\'я');
       expect(parsed.debt).toBe(20000);
+    });
+
+    test('updateParentRouteSchema валідує params та body разом', () => {
+      const parsed = updateParentRouteSchema.parse({
+        params: { id: '42' },
+        body: { fullName: 'Оновлений Тато', debt: 0 },
+      });
+      expect(parsed.params.id).toBe(42);
+      expect(parsed.body.fullName).toBe('Оновлений Тато');
     });
 
     test('query-схема: валідний search передається як рядок', () => {
@@ -254,8 +264,92 @@ describe('Parents Module - Unit Tests', () => {
       expect(mockRepo.delete).not.toHaveBeenCalled();
     });
 
-    test('deleteParent: успішно видаляє батьків та прив\'язаного юзера при debt = 0', async () => {
-      mockRepo.findById.mockResolvedValueOnce({ id: 1, debt: 0, userId: 15 });
+    test('deleteParent: викидає ConflictError якщо активна дитина залишається без інших батьків', async () => {
+      mockRepo.findById.mockResolvedValueOnce({
+        id: 1,
+        debt: 0,
+        children: [
+          {
+            child: {
+              id: 10,
+              isActive: true,
+              parents: [{ parentId: 1 }],
+            },
+          },
+        ],
+      });
+
+      await expect(service.deleteParent(1)).rejects.toThrow(ConflictError);
+      expect(mockRepo.delete).not.toHaveBeenCalled();
+    });
+
+    test('deleteParent: викидає ConflictError якщо child.parents відсутній (null)', async () => {
+      mockRepo.findById.mockResolvedValueOnce({
+        id: 1,
+        debt: 0,
+        children: [
+          {
+            child: {
+              id: 10,
+              isActive: true,
+              parents: null,
+            },
+          },
+        ],
+      });
+
+      await expect(service.deleteParent(1)).rejects.toThrow(ConflictError);
+      expect(mockRepo.delete).not.toHaveBeenCalled();
+    });
+
+    test('deleteParent: успішно видаляє якщо у активної дитини є інший зареєстрований батько', async () => {
+      mockRepo.findById.mockResolvedValueOnce({
+        id: 1,
+        debt: 0,
+        userId: 15,
+        children: [
+          {
+            child: {
+              id: 10,
+              isActive: true,
+              parents: [{ parentId: 1 }, { parentId: 2 }],
+            },
+          },
+        ],
+      });
+      mockRepo.delete.mockResolvedValueOnce({ id: 1 });
+      mockDb.user.delete.mockResolvedValueOnce({ id: 15 });
+
+      await service.deleteParent(1);
+
+      expect(mockRepo.delete).toHaveBeenCalledWith(1, mockDb);
+      expect(mockDb.user.delete).toHaveBeenCalledWith({ where: { id: 15 } });
+    });
+
+    test('deleteParent: успішно видаляє якщо зв\'язана дитина неактивна', async () => {
+      mockRepo.findById.mockResolvedValueOnce({
+        id: 1,
+        debt: 0,
+        userId: null,
+        children: [
+          {
+            child: {
+              id: 10,
+              isActive: false,
+              parents: [{ parentId: 1 }],
+            },
+          },
+        ],
+      });
+      mockRepo.delete.mockResolvedValueOnce({ id: 1 });
+
+      await service.deleteParent(1);
+
+      expect(mockRepo.delete).toHaveBeenCalledWith(1, mockDb);
+    });
+
+    test('deleteParent: успішно видаляє батьків та прив\'язаного юзера при debt = 0 без дітей', async () => {
+      mockRepo.findById.mockResolvedValueOnce({ id: 1, debt: 0, userId: 15, children: [] });
       mockRepo.delete.mockResolvedValueOnce({ id: 1 });
       mockDb.user.delete.mockResolvedValueOnce({ id: 15 });
 

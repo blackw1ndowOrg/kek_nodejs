@@ -4,7 +4,7 @@ const { authorize } = require('../../middleware/authorize');
 const { validate } = require('../../middleware/validate');
 const {
   createParentSchema,
-  updateParentSchema,
+  updateParentRouteSchema,
   parentIdParamSchema,
   parentsQuerySchema,
 } = require('./parents.schema');
@@ -19,8 +19,7 @@ router.get('/', validate(parentsQuerySchema), parentsController.getAll);
 router.get('/:id', validate(parentIdParamSchema), parentsController.getById);
 router.patch(
   '/:id',
-  validate(parentIdParamSchema),
-  validate(updateParentSchema),
+  validate(updateParentRouteSchema),
   parentsController.update
 );
 router.delete('/:id', validate(parentIdParamSchema), parentsController.delete);
