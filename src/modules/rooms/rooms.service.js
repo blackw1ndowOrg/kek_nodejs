@@ -10,11 +10,13 @@ const RECORD_NOT_FOUND = 'P2025';
 
 function translateDbError(error) {
   if (error?.code === UNIQUE_VIOLATION)
-    return new ConflictError('Room with this name already exists');
+    return new ConflictError('Кімната з такою назвою вже існує');
   if (error?.code === FOREIGN_KEY_VIOLATION)
-    return new ConflictError('Room is in use and cannot be deleted');
-  if (error?.code === VALUE_OUT_OF_RANGE) return new BadRequestError('Value is out of range');
-  if (error?.code === RECORD_NOT_FOUND) return new NotFoundError('Room not found');
+    return new ConflictError('Кімната використовується і не може бути видалена');
+  if (error?.code === VALUE_OUT_OF_RANGE)
+    return new BadRequestError('Значення виходить за межі допустимого діапазону');
+  if (error?.code === RECORD_NOT_FOUND)
+    return new NotFoundError('Кімнату з таким ID не знайдено');
   return error;
 }
 
@@ -31,7 +33,7 @@ class RoomsService {
   async getById(id) {
     const room = await this.repository.findById(id);
     if (!room) {
-      throw new NotFoundError('Room not found');
+      throw new NotFoundError('Кімнату з таким ID не знайдено');
     }
     return room;
   }
@@ -40,7 +42,7 @@ class RoomsService {
   async create(data) {
     const limit = this.settings.get('DEFAULT_ROOMS_COUNT');
     if ((await this.repository.count()) >= limit) {
-      throw new ConflictError(`Room limit reached (${limit})`);
+      throw new ConflictError(`Досягнуто ліміту кількості кімнат (${limit})`);
     }
     const payload = {
       ...data,
@@ -58,7 +60,7 @@ class RoomsService {
     if (data.type !== undefined) {
       const room = await this.getById(id);
       if (data.type !== room.type && (room.group || room.club)) {
-        throw new ConflictError('Cannot change type: room is assigned to a group or club');
+        throw new ConflictError('Неможливо змінити тип: кімната закріплена за групою або гуртком');
       }
     }
     try {
@@ -72,7 +74,7 @@ class RoomsService {
   async remove(id) {
     const room = await this.getById(id);
     if (room.group || room.club) {
-      throw new ConflictError('Room is in use and cannot be deleted');
+      throw new ConflictError('Кімната використовується і не може бути видалена');
     }
     try {
       await this.repository.delete(id);

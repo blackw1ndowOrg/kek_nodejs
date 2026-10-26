@@ -13,17 +13,17 @@ class RoomsController {
 
   getById = async (req, res) => {
     const room = await this.service.getById(req.params.id);
-    res.status(StatusCodes.OK).json({ room });
+    res.status(StatusCodes.OK).json(room);
   };
 
   create = async (req, res) => {
     const room = await this.service.create(req.body);
-    res.status(StatusCodes.CREATED).json({ room });
+    res.status(StatusCodes.CREATED).json(room);
   };
 
   update = async (req, res) => {
     const room = await this.service.update(req.params.id, req.body);
-    res.status(StatusCodes.OK).json({ room });
+    res.status(StatusCodes.OK).json(room);
   };
 
   remove = async (req, res) => {
