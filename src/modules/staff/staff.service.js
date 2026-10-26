@@ -8,11 +8,13 @@ const {
   managerSalary,
 } = require('../../domain/salary');
 const { staffRepository } = require('./staff.repository');
+const { settingsService } = require('../settings/settings.service');
 
 class StaffService {
-  constructor(repository = staffRepository, db = prisma) {
+  constructor(repository = staffRepository, db = prisma, settings = settingsService) {
     this.repository = repository;
     this.db = db;
+    this.settings = settings;
   }
 
   async createStaff({ fullName, type, isActive = true, user }) {
@@ -152,7 +154,7 @@ class StaffService {
       };
     }
 
-    let salary = 0;
+    let salary;
     let childrenCount = null;
     let groupName = null;
 
@@ -160,21 +162,29 @@ class StaffService {
       case 'EDUCATOR': {
         childrenCount = staff.educatorOf?.children?.length || 0;
         groupName = staff.educatorOf?.name || null;
-        salary = educatorSalary(childrenCount);
+        const ratePerChild = this.settings.get('EDUCATOR_PER_CHILD');
+        const extraPay = this.settings.get('EDUCATOR_EXTRA_PAY');
+        const threshold = this.settings.get('GROUP_EXTRA_PAY_THRESHOLD');
+        salary = educatorSalary(childrenCount, ratePerChild, extraPay, threshold);
         break;
       }
       case 'ASSISTANT': {
         childrenCount = staff.assistantOf?.children?.length || 0;
         groupName = staff.assistantOf?.name || null;
-        salary = assistantSalary(childrenCount);
+        const baseSalary = this.settings.get('ASSISTANT_SALARY');
+        const extraPay = this.settings.get('ASSISTANT_EXTRA_PAY');
+        const threshold = this.settings.get('GROUP_EXTRA_PAY_THRESHOLD');
+        salary = assistantSalary(childrenCount, baseSalary, extraPay, threshold);
         break;
       }
       case 'CLUB_TEACHER': {
-        salary = clubTeacherSalary();
+        const clubSalary = this.settings.get('CLUB_TEACHER_SALARY');
+        salary = clubTeacherSalary(clubSalary);
         break;
       }
       case 'MANAGER': {
-        salary = managerSalary();
+        const mgrSalary = this.settings.get('MANAGER_SALARY');
+        salary = managerSalary(mgrSalary);
         break;
       }
       default:

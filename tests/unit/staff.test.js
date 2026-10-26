@@ -502,6 +502,26 @@ describe('Staff Module - Unit Tests', () => {
         expect(salaryInfo.salary).toBe(8000000);
       });
 
+      test('використовує динамічні ставки з settingsService (якщо змінено в налаштуваннях)', async () => {
+        const customSettings = {
+          get: jest.fn((key) => {
+            if (key === 'MANAGER_SALARY') return 9000000;
+            return 0;
+          }),
+        };
+        const customService = new StaffService(mockRepo, mockDb, customSettings);
+        mockRepo.findById.mockResolvedValueOnce({
+          id: 4,
+          fullName: 'Головний Менеджер',
+          type: 'MANAGER',
+          isActive: true,
+        });
+
+        const salaryInfo = await customService.getStaffSalary(4);
+        expect(customSettings.get).toHaveBeenCalledWith('MANAGER_SALARY');
+        expect(salaryInfo.salary).toBe(9000000);
+      });
+
       test('повертає salary = 0 для неактивного співробітника', async () => {
         mockRepo.findById.mockResolvedValueOnce({
           id: 5,
