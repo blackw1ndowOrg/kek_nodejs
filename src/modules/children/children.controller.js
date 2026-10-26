@@ -13,17 +13,17 @@ class ChildrenController {
 
   getById = async (req, res) => {
     const child = await this.service.getById(req.user, req.params.id);
-    res.status(StatusCodes.OK).json({ child });
+    res.status(StatusCodes.OK).json(child);
   };
 
   create = async (req, res) => {
     const child = await this.service.create(req.user, req.body);
-    res.status(StatusCodes.CREATED).json({ child });
+    res.status(StatusCodes.CREATED).json(child);
   };
 
   update = async (req, res) => {
     const child = await this.service.update(req.user, req.params.id, req.body);
-    res.status(StatusCodes.OK).json({ child });
+    res.status(StatusCodes.OK).json(child);
   };
 
   deactivate = async (req, res) => {

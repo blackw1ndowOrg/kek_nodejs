@@ -39,7 +39,7 @@ const createChildSchema = z.object({
     .object({
       fullName: childFields.fullName,
       birthDate: childFields.birthDate,
-      notes: childFields.notes.optional(),
+      notes: childFields.notes.nullable().optional(),
       paymentPlan: childFields.paymentPlan.optional(),
       discountPercent: childFields.discountPercent.optional(),
       hasDeputyRelatives: childFields.hasDeputyRelatives.optional(),

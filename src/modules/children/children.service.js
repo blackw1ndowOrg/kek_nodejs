@@ -10,6 +10,24 @@ const ADMIN_ONLY_FIELDS = Object.freeze(['discountPercent', 'hasDeputyRelatives'
 const HIDDEN_FROM_PARENT = Object.freeze(['discountPercent', 'hasDeputyRelatives']);
 const PARENT_EDITABLE_FIELDS = Object.freeze(['notes']); // батьки додають лише інфо про дитину
 
+// Коди помилок Prisma: дані змінилися між перевіркою в сервісі й записом у базу
+const FOREIGN_KEY_VIOLATION = 'P2003'; // батька видалили під час створення дитини
+const RECORD_NOT_FOUND = 'P2025'; // дитину або батька видалили під час запису
+
+const CHILD_NOT_FOUND = 'Дитину не знайдено';
+const PARENT_NOT_FOUND = 'Батьків не знайдено';
+
+/** Перекладає відомі помилки Prisma на помилки застосунку; решту повертає як є */
+function translateDbError(error, notFoundMessage) {
+  if (error?.code === FOREIGN_KEY_VIOLATION) {
+    return new NotFoundError(PARENT_NOT_FOUND);
+  }
+  if (error?.code === RECORD_NOT_FOUND) {
+    return new NotFoundError(notFoundMessage);
+  }
+  return error;
+}
+
 class ChildrenService {
   /**
    * @param {object} repository
@@ -42,7 +60,7 @@ class ChildrenService {
     const age = ageOnSeptemberFirst(birthDate, currentAcademicYear(this.now()));
     if (age < MIN_AGE || age > MAX_AGE) {
       throw new BadRequestError(
-        `Child must be from ${MIN_AGE} to ${MAX_AGE} years old on September 1: ${age}`
+        `На 1 вересня дитині має бути від ${MIN_AGE} до ${MAX_AGE} років, а їй ${age}`
       );
     }
   }
@@ -51,13 +69,13 @@ class ChildrenService {
   assertAdminFields(user, data) {
     const adminFields = ADMIN_ONLY_FIELDS.filter((field) => data[field] !== undefined);
     if (adminFields.length > 0 && user.role !== Role.ADMIN) {
-      throw new ForbiddenError(`Only admin can set: ${adminFields.join(', ')}`);
+      throw new ForbiddenError(`Лише адміністратор може змінювати: ${adminFields.join(', ')}`);
     }
     if (data.discountPercent !== undefined) {
       const allowed = [NO_DISCOUNT, ...this.settings.get('DISCOUNT_LEVELS')];
       if (!allowed.includes(data.discountPercent)) {
         throw new BadRequestError(
-          `Discount must be one of ${allowed.join(', ')}: ${data.discountPercent}`
+          `Знижка має бути одним зі значень ${allowed.join(', ')}, отримано ${data.discountPercent}`
         );
       }
     }
@@ -66,7 +84,7 @@ class ChildrenService {
   async findAccessible(user, id) {
     const child = await this.repository.findById(id, this.parentScope(user));
     if (!child) {
-      throw new NotFoundError('Child not found'); // і для неіснуючої, і для чужої дитини
+      throw new NotFoundError(CHILD_NOT_FOUND); // і для неіснуючої, і для чужої дитини
     }
     return child;
   }
@@ -90,10 +108,14 @@ class ChildrenService {
     const uniqueParentIds = [...new Set(parentIds)];
     const existing = await this.repository.countParents(uniqueParentIds);
     if (existing !== uniqueParentIds.length) {
-      throw new NotFoundError('Parent not found');
+      throw new NotFoundError(PARENT_NOT_FOUND);
     }
 
-    return this.toResponse(user, await this.repository.create(data, uniqueParentIds));
+    try {
+      return this.toResponse(user, await this.repository.create(data, uniqueParentIds));
+    } catch (error) {
+      throw translateDbError(error, PARENT_NOT_FOUND);
+    }
   }
 
   async update(user, id, data) {
@@ -102,7 +124,7 @@ class ChildrenService {
     if (user.role === Role.PARENT) {
       const forbidden = Object.keys(data).filter((key) => !PARENT_EDITABLE_FIELDS.includes(key));
       if (forbidden.length > 0) {
-        throw new ForbiddenError(`Parent can change only: ${PARENT_EDITABLE_FIELDS.join(', ')}`);
+        throw new ForbiddenError('Батьки можуть змінювати лише примітки (notes)');
       }
     }
     if (data.birthDate !== undefined) {
@@ -110,12 +132,20 @@ class ChildrenService {
     }
     this.assertAdminFields(user, data);
 
-    return this.toResponse(user, await this.repository.update(id, data));
+    try {
+      return this.toResponse(user, await this.repository.update(id, data));
+    } catch (error) {
+      throw translateDbError(error, CHILD_NOT_FOUND);
+    }
   }
 
   async deactivate(user, id) {
     await this.findAccessible(user, id);
-    await this.repository.update(id, { isActive: false });
+    try {
+      await this.repository.update(id, { isActive: false });
+    } catch (error) {
+      throw translateDbError(error, CHILD_NOT_FOUND);
+    }
   }
 }
 
