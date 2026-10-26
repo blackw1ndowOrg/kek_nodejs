@@ -4,7 +4,7 @@ const { authorize } = require('../../middleware/authorize');
 const { validate } = require('../../middleware/validate');
 const {
   createStaffSchema,
-  updateStaffSchema,
+  updateStaffRouteSchema,
   staffIdParamSchema,
   staffQuerySchema,
 } = require('./staff.schema');
@@ -26,6 +26,12 @@ router.get(
   validate(staffIdParamSchema),
   staffController.getById
 );
+router.get(
+  '/:id/salary',
+  authorize('ADMIN', 'MANAGER'),
+  validate(staffIdParamSchema),
+  staffController.getSalary
+);
 
 router.post(
   '/',
@@ -36,8 +42,7 @@ router.post(
 router.patch(
   '/:id',
   authorize('ADMIN', 'MANAGER'),
-  validate(staffIdParamSchema),
-  validate(updateStaffSchema),
+  validate(updateStaffRouteSchema),
   staffController.update
 );
 router.delete(

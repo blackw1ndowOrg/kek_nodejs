@@ -30,6 +30,11 @@ class StaffController {
     await this.service.deleteStaff(req.params.id);
     res.status(StatusCodes.NO_CONTENT).send();
   };
+
+  getSalary = async (req, res) => {
+    const salary = await this.service.getStaffSalary(req.params.id);
+    res.status(StatusCodes.OK).json(salary);
+  };
 }
 
 const staffController = new StaffController();

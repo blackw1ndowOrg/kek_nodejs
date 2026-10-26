@@ -59,10 +59,16 @@ const updateStaffSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+const updateStaffRouteSchema = z.object({
+  params: staffIdParamSchema.shape.params,
+  body: updateStaffSchema,
+});
+
 module.exports = {
   staffIdParamSchema,
   staffQuerySchema,
   createStaffSchema,
   updateStaffSchema,
+  updateStaffRouteSchema,
   staffTypeEnum,
 };

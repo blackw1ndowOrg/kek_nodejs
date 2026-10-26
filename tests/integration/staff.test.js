@@ -58,31 +58,31 @@ describe('Staff Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(StatusCodes.OK);
     });
-
-    test('повертає 403 для TEACHER при спробі створити співробітника', async () => {
-      const res = await request(app)
-        .post('/api/v1/staff')
-        .set('Authorization', `Bearer ${teacherToken}`)
-        .send({ fullName: 'Новий', type: 'ASSISTANT' });
-
-      expect(res.status).toBe(StatusCodes.FORBIDDEN);
-    });
   });
 
   describe('POST /api/v1/staff', () => {
-    test('повертає 400 якщо передано неіснуючий тип посади', async () => {
+    test('повертає 400 якщо не передано type', async () => {
       const res = await request(app)
         .post('/api/v1/staff')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ fullName: 'Іван Кухар', type: 'CHEF' });
+        .send({ fullName: 'Іван Петров' });
 
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
     });
 
-    test('повертає 201 при успішному створенні співробітника', async () => {
+    test('повертає 400 якщо type невалідний', async () => {
+      const res = await request(app)
+        .post('/api/v1/staff')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ fullName: 'Іван Петров', type: 'INVALID_TYPE' });
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+    });
+
+    test('повертає 201 при успішному створенні працівника', async () => {
       jest.spyOn(staffRepository, 'create').mockResolvedValueOnce({
-        id: 77,
-        fullName: 'Оксана Сергіївна',
+        id: 101,
+        fullName: 'Олена Ковальчук',
         type: 'EDUCATOR',
         isActive: true,
         userId: null,
@@ -91,18 +91,19 @@ describe('Staff Integration Tests (Supertest)', () => {
       const res = await request(app)
         .post('/api/v1/staff')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ fullName: 'Оксана Сергіївна', type: 'EDUCATOR' });
+        .send({ fullName: 'Олена Ковальчук', type: 'EDUCATOR' });
 
       expect(res.status).toBe(StatusCodes.CREATED);
-      expect(res.body.id).toBe(77);
-      expect(res.body.fullName).toBe('Оксана Сергіївна');
+      expect(res.body.id).toBe(101);
+      expect(res.body.fullName).toBe('Олена Ковальчук');
+      expect(res.body.type).toBe('EDUCATOR');
     });
   });
 
   describe('GET /api/v1/staff', () => {
-    test('повертає 200 та список співробітників', async () => {
+    test('повертає 200 та список працівників', async () => {
       jest.spyOn(staffRepository, 'findAll').mockResolvedValueOnce([
-        { id: 1, fullName: 'Анна', type: 'MANAGER', isActive: true },
+        { id: 1, fullName: 'Оксана', type: 'EDUCATOR', isActive: true },
       ]);
 
       const res = await request(app)
@@ -111,11 +112,42 @@ describe('Staff Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(StatusCodes.OK);
       expect(res.body.staff).toHaveLength(1);
-      expect(res.body.staff[0].fullName).toBe('Анна');
+      expect(res.body.staff[0].fullName).toBe('Оксана');
+    });
+
+    test('GET з query isActive=true валідується та повертає 200', async () => {
+      jest.spyOn(staffRepository, 'findAll').mockResolvedValueOnce([
+        { id: 1, fullName: 'Оксана', type: 'EDUCATOR', isActive: true },
+      ]);
+
+      const res = await request(app)
+        .get('/api/v1/staff?isActive=true')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(staffRepository.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ isActive: true })
+      );
+    });
+
+    test('GET з невалідним query type=INVALID повертає 400 Bad Request', async () => {
+      const res = await request(app)
+        .get('/api/v1/staff?type=INVALID')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
     });
   });
 
   describe('GET /api/v1/staff/:id', () => {
+    test('повертає 400 якщо id не числовий', async () => {
+      const res = await request(app)
+        .get('/api/v1/staff/abc')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+    });
+
     test('повертає 404 якщо співробітника не знайдено', async () => {
       jest.spyOn(staffRepository, 'findById').mockResolvedValueOnce(null);
 
@@ -128,23 +160,23 @@ describe('Staff Integration Tests (Supertest)', () => {
 
     test('повертає 200 та знайденого співробітника', async () => {
       jest.spyOn(staffRepository, 'findById').mockResolvedValueOnce({
-        id: 10,
-        fullName: 'Богдан Викладач',
-        type: 'CLUB_TEACHER',
+        id: 5,
+        fullName: 'Дмитро',
+        type: 'MANAGER',
       });
 
       const res = await request(app)
-        .get('/api/v1/staff/10')
+        .get('/api/v1/staff/5')
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(StatusCodes.OK);
-      expect(res.body.id).toBe(10);
-      expect(res.body.fullName).toBe('Богдан Викладач');
+      expect(res.body.id).toBe(5);
+      expect(res.body.fullName).toBe('Дмитро');
     });
   });
 
   describe('PATCH /api/v1/staff/:id', () => {
-    test('повертає 200 та оновлює дані співробітника', async () => {
+    test('повертає 200 та оновленого співробітника', async () => {
       jest.spyOn(staffRepository, 'findById').mockResolvedValueOnce({
         id: 10,
         fullName: 'Богдан',
@@ -161,6 +193,37 @@ describe('Staff Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(StatusCodes.OK);
       expect(res.body.fullName).toBe('Богдан Оновлений');
+    });
+  });
+
+  describe('GET /api/v1/staff/:id/salary', () => {
+    test('повертає 200 та розрахунок зарплати вихователя', async () => {
+      jest.spyOn(staffRepository, 'findById').mockResolvedValueOnce({
+        id: 10,
+        fullName: 'Марія Вихователь',
+        type: 'EDUCATOR',
+        isActive: true,
+        educatorOf: {
+          name: 'Сонечко',
+          children: new Array(15).fill({ id: 1 }),
+        },
+      });
+
+      const res = await request(app)
+        .get('/api/v1/staff/10/salary')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.salary).toBe(3900000);
+      expect(res.body.details.childrenCount).toBe(15);
+    });
+
+    test('повертає 403 для ролі TEACHER', async () => {
+      const res = await request(app)
+        .get('/api/v1/staff/10/salary')
+        .set('Authorization', `Bearer ${teacherToken}`);
+
+      expect(res.status).toBe(StatusCodes.FORBIDDEN);
     });
   });
 

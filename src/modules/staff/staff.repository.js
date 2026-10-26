@@ -71,6 +71,11 @@ class StaffRepository {
             id: true,
             name: true,
             age: true,
+            children: {
+              select: {
+                id: true,
+              },
+            },
           },
         },
         assistantOf: {
@@ -78,6 +83,11 @@ class StaffRepository {
             id: true,
             name: true,
             age: true,
+            children: {
+              select: {
+                id: true,
+              },
+            },
           },
         },
         clubTaught: {

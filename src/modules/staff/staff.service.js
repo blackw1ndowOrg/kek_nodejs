@@ -1,6 +1,12 @@
 const bcrypt = require('bcryptjs');
 const { prisma } = require('../../config/prisma');
 const { NotFoundError, ConflictError } = require('../../errors/AppError');
+const {
+  educatorSalary,
+  assistantSalary,
+  clubTeacherSalary,
+  managerSalary,
+} = require('../../domain/salary');
 const { staffRepository } = require('./staff.repository');
 
 class StaffService {
@@ -70,13 +76,24 @@ class StaffService {
       throw new NotFoundError('Працівника з таким ID не знайдено');
     }
 
-    // Захист: заборона деактивації закріпленого вихователя/помічника
+    // Захист: заборона деактивації закріпленого вихователя/помічника/викладача гуртка
     if (
       updateData.isActive === false &&
       (existing.educatorOf || existing.assistantOf || existing.clubTaught)
     ) {
       throw new ConflictError(
         'Неможливо деактивувати співробітника, закріпленого за діючою групою або гуртком'
+      );
+    }
+
+    // Захист: заборона зміни посади співробітника, закріпленого за діючою групою або гуртком
+    if (
+      updateData.type &&
+      updateData.type !== existing.type &&
+      (existing.educatorOf || existing.assistantOf || existing.clubTaught)
+    ) {
+      throw new ConflictError(
+        'Неможливо змінити посаду співробітника, закріпленого за діючою групою або гуртком'
       );
     }
 
@@ -90,6 +107,9 @@ class StaffService {
           where: { id: existing.userId },
           data: { role: newRole },
         });
+        if (updated.user) {
+          updated.user.role = newRole;
+        }
       }
 
       return updated;
@@ -114,6 +134,64 @@ class StaffService {
         await tx.user.delete({ where: { id: existing.userId } });
       }
     });
+  }
+
+  async getStaffSalary(id) {
+    const staff = await this.repository.findById(id);
+    if (!staff) {
+      throw new NotFoundError('Працівника з таким ID не знайдено');
+    }
+
+    if (!staff.isActive) {
+      return {
+        staffId: staff.id,
+        fullName: staff.fullName,
+        type: staff.type,
+        salary: 0,
+        isActive: false,
+      };
+    }
+
+    let salary = 0;
+    let childrenCount = null;
+    let groupName = null;
+
+    switch (staff.type) {
+      case 'EDUCATOR': {
+        childrenCount = staff.educatorOf?.children?.length || 0;
+        groupName = staff.educatorOf?.name || null;
+        salary = educatorSalary(childrenCount);
+        break;
+      }
+      case 'ASSISTANT': {
+        childrenCount = staff.assistantOf?.children?.length || 0;
+        groupName = staff.assistantOf?.name || null;
+        salary = assistantSalary(childrenCount);
+        break;
+      }
+      case 'CLUB_TEACHER': {
+        salary = clubTeacherSalary();
+        break;
+      }
+      case 'MANAGER': {
+        salary = managerSalary();
+        break;
+      }
+      default:
+        salary = 0;
+    }
+
+    return {
+      staffId: staff.id,
+      fullName: staff.fullName,
+      type: staff.type,
+      salary,
+      isActive: staff.isActive,
+      details: {
+        childrenCount,
+        groupName,
+      },
+    };
   }
 }
 
