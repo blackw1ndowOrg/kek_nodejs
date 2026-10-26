@@ -110,7 +110,7 @@ describe('Children API (Supertest)', () => {
     test('адмін: 200', async () => {
       const res = await request(app).get(`${BASE}/5`).set('Authorization', tokenFor('ADMIN', 1));
       expect(res.status).toBe(StatusCodes.OK);
-      expect(res.body).toEqual({ child: CHILD });
+      expect(res.body).toEqual(CHILD);
       expect(childrenRepository.findById).toHaveBeenCalledWith(5, undefined);
     });
 
@@ -134,7 +134,7 @@ describe('Children API (Supertest)', () => {
         .set('Authorization', tokenFor('MANAGER', 2))
         .send(NEW_CHILD);
       expect(res.status).toBe(StatusCodes.CREATED);
-      expect(res.body).toEqual({ child: CHILD });
+      expect(res.body).toEqual(CHILD);
       const [data, parentIds] = childrenRepository.create.mock.calls[0];
       expect(data.birthDate).toBeInstanceOf(Date);
       expect(parentIds).toEqual([7]);
@@ -184,7 +184,7 @@ describe('Children API (Supertest)', () => {
         .send({ notes: 'не любить гречку' });
       expect(res.status).toBe(StatusCodes.OK);
       expect(childrenRepository.update).toHaveBeenCalledWith(5, { notes: 'не любить гречку' });
-      expect(res.body.child).not.toHaveProperty('discountPercent');
+      expect(res.body).not.toHaveProperty('discountPercent');
     });
 
     test('батько змінює інше поле -> 403', async () => {
