@@ -1,0 +1,281 @@
+diff --git a/src/app.js b/src/app.js
+index b92628b..152f7e9 100644
+--- a/src/app.js
++++ b/src/app.js
+@@ -3,6 +3,7 @@ const { notFound } = require('./middleware/notFound');
+ const { errorHandler } = require('./middleware/errorHandler');
+ const authRoutes = require('./modules/auth/auth.routes');
+ const settingsRoutes = require('./modules/settings/settings.routes');
++const roomsRoutes = require('./modules/rooms/rooms.routes');
+ const billingRoutes = require('./modules/billing/billing.routes');
+ 
+ function createApp() {
+@@ -15,6 +16,7 @@ function createApp() {
+ 
+   app.use('/api/v1/auth', authRoutes);
+   app.use('/api/v1/settings', settingsRoutes);
++  app.use('/api/v1/rooms', roomsRoutes);
+   app.use('/api/v1/billing', billingRoutes);
+ 
+   app.use(notFound);
+diff --git a/src/modules/rooms/rooms.controller.js b/src/modules/rooms/rooms.controller.js
+new file mode 100644
+index 0000000..3bd8b2a
+--- /dev/null
++++ b/src/modules/rooms/rooms.controller.js
+@@ -0,0 +1,37 @@
++const { StatusCodes } = require('http-status-codes');
++const { roomsService } = require('./rooms.service');
++
++class RoomsController {
++  constructor(service = roomsService) {
++    this.service = service;
++  }
++
++  list = async (req, res) => {
++    const rooms = await this.service.list({ type: req.query.type });
++    res.status(StatusCodes.OK).json({ rooms });
++  };
++
++  getById = async (req, res) => {
++    const room = await this.service.getById(req.params.id);
++    res.status(StatusCodes.OK).json({ room });
++  };
++
++  create = async (req, res) => {
++    const room = await this.service.create(req.body);
++    res.status(StatusCodes.CREATED).json({ room });
++  };
++
++  update = async (req, res) => {
++    const room = await this.service.update(req.params.id, req.body);
++    res.status(StatusCodes.OK).json({ room });
++  };
++
++  remove = async (req, res) => {
++    await this.service.remove(req.params.id);
++    res.status(StatusCodes.NO_CONTENT).send();
++  };
++}
++
++const roomsController = new RoomsController();
++
++module.exports = { RoomsController, roomsController };
+diff --git a/src/modules/rooms/rooms.repository.js b/src/modules/rooms/rooms.repository.js
+new file mode 100644
+index 0000000..ab7fe19
+--- /dev/null
++++ b/src/modules/rooms/rooms.repository.js
+@@ -0,0 +1,44 @@
++const { prisma } = require('../../config/prisma');
++
++const roomSelect = {
++  id: true,
++  name: true,
++  type: true,
++  monthlyCost: true,
++  group: { select: { id: true, name: true } },
++  club: { select: { id: true, name: true } },
++};
++
++class RoomsRepository {
++  constructor(db = prisma) {
++    this.db = db;
++  }
++
++  async findMany({ type } = {}) {
++    return this.db.room.findMany({
++      where: type ? { type } : undefined,
++      orderBy: { id: 'asc' },
++      select: roomSelect,
++    });
++  }
++
++  async findById(id) {
++    return this.db.room.findUnique({ where: { id }, select: roomSelect });
++  }
++
++  async create(data) {
++    return this.db.room.create({ data, select: roomSelect });
++  }
++
++  async update(id, data) {
++    return this.db.room.update({ where: { id }, data, select: roomSelect });
++  }
++
++  async delete(id) {
++    return this.db.room.delete({ where: { id } });
++  }
++}
++
++const roomsRepository = new RoomsRepository();
++
++module.exports = { RoomsRepository, roomsRepository };
+diff --git a/src/modules/rooms/rooms.routes.js b/src/modules/rooms/rooms.routes.js
+new file mode 100644
+index 0000000..9eed105
+--- /dev/null
++++ b/src/modules/rooms/rooms.routes.js
+@@ -0,0 +1,34 @@
++const { Router } = require('express');
++const { auth } = require('../../middleware/auth');
++const { authorize } = require('../../middleware/authorize');
++const { validate } = require('../../middleware/validate');
++const {
++  listRoomsSchema,
++  roomIdSchema,
++  createRoomSchema,
++  updateRoomSchema,
++} = require('./rooms.schema');
++const { roomsController } = require('./rooms.controller');
++
++const router = Router();
++
++router.use(auth);
++
++router.get(
++  '/',
++  authorize('ADMIN', 'MANAGER', 'TEACHER'),
++  validate(listRoomsSchema),
++  roomsController.list
++);
++router.get(
++  '/:id',
++  authorize('ADMIN', 'MANAGER', 'TEACHER'),
++  validate(roomIdSchema),
++  roomsController.getById
++);
++
++router.post('/', authorize('ADMIN'), validate(createRoomSchema), roomsController.create);
++router.patch('/:id', authorize('ADMIN'), validate(updateRoomSchema), roomsController.update);
++router.delete('/:id', authorize('ADMIN'), validate(roomIdSchema), roomsController.remove);
++
++module.exports = router;
+diff --git a/src/modules/rooms/rooms.schema.js b/src/modules/rooms/rooms.schema.js
+new file mode 100644
+index 0000000..20ef1b7
+--- /dev/null
++++ b/src/modules/rooms/rooms.schema.js
+@@ -0,0 +1,49 @@
++const { z } = require('zod');
++
++const ROOM_TYPES = ['GROUP', 'CLUB'];
++
++const roomIdParams = z.object({
++  id: z.coerce.number().int('Некоректний id кімнати').positive('Некоректний id кімнати'),
++});
++
++const nameSchema = z
++  .string()
++  .trim()
++  .min(1, 'Назва кімнати обовʼязкова')
++  .max(100, 'Назва кімнати задовга');
++const typeSchema = z.enum(ROOM_TYPES, 'type має бути GROUP або CLUB');
++// Monthly room cost in kopiykas
++const monthlyCostSchema = z
++  .number()
++  .int('Вартість має бути цілим числом копійок')
++  .nonnegative('Вартість не може бути відʼємною');
++
++const listRoomsSchema = z.object({
++  query: z.object({ type: typeSchema.optional() }),
++});
++
++const roomIdSchema = z.object({ params: roomIdParams });
++
++const createRoomSchema = z.object({
++  body: z
++    .object({ name: nameSchema, type: typeSchema, monthlyCost: monthlyCostSchema.optional() })
++    .strict(),
++});
++
++const updateRoomSchema = z.object({
++  params: roomIdParams,
++  body: z
++    .object({ name: nameSchema, type: typeSchema, monthlyCost: monthlyCostSchema })
++    .partial()
++    .strict()
++    .refine((body) => Object.keys(body).length > 0, 'Потрібно вказати хоча б одне поле для зміни'),
++});
++
++module.exports = {
++  ROOM_TYPES,
++  roomIdParams,
++  listRoomsSchema,
++  roomIdSchema,
++  createRoomSchema,
++  updateRoomSchema,
++};
+diff --git a/src/modules/rooms/rooms.service.js b/src/modules/rooms/rooms.service.js
+new file mode 100644
+index 0000000..5bfa0a0
+--- /dev/null
++++ b/src/modules/rooms/rooms.service.js
+@@ -0,0 +1,67 @@
++const { ConflictError, NotFoundError } = require('../../errors/AppError');
++const { roomsRepository } = require('./rooms.repository');
++
++// Prisma error codes
++const UNIQUE_VIOLATION = 'P2002';
++const FOREIGN_KEY_VIOLATION = 'P2003';
++const RECORD_NOT_FOUND = 'P2025';
++
++function translateDbError(error) {
++  if (error?.code === UNIQUE_VIOLATION)
++    return new ConflictError('Room with this name already exists');
++  if (error?.code === FOREIGN_KEY_VIOLATION)
++    return new ConflictError('Room is in use and cannot be deleted');
++  if (error?.code === RECORD_NOT_FOUND) return new NotFoundError('Room not found');
++  return error;
++}
++
++class RoomsService {
++  constructor(repository = roomsRepository) {
++    this.repository = repository;
++  }
++
++  async list(filters) {
++    return this.repository.findMany(filters);
++  }
++
++  async getById(id) {
++    const room = await this.repository.findById(id);
++    if (!room) {
++      throw new NotFoundError('Room not found');
++    }
++    return room;
++  }
++
++  async create(data) {
++    try {
++      return await this.repository.create(data);
++    } catch (error) {
++      throw translateDbError(error);
++    }
++  }
++
++  async update(id, data) {
++    try {
++      return await this.repository.update(id, data);
++    } catch (error) {
++      throw translateDbError(error);
++    }
++  }
++
++  /** A room used by a group or a club cannot be deleted */
++  async remove(id) {
++    const room = await this.getById(id);
++    if (room.group || room.club) {
++      throw new ConflictError('Room is in use and cannot be deleted');
++    }
++    try {
++      await this.repository.delete(id);
++    } catch (error) {
++      throw translateDbError(error);
++    }
++  }
++}
++
++const roomsService = new RoomsService();
++
++module.exports = { RoomsService, roomsService, translateDbError };
