@@ -5,6 +5,7 @@ const authRoutes = require('./modules/auth/auth.routes');
 const settingsRoutes = require('./modules/settings/settings.routes');
 const roomsRoutes = require('./modules/rooms/rooms.routes');
 const billingRoutes = require('./modules/billing/billing.routes');
+const parentsRoutes = require('./modules/parents/parents.routes');
 const staffRoutes = require('./modules/staff/staff.routes');
 
 function createApp() {
@@ -19,6 +20,7 @@ function createApp() {
   app.use('/api/v1/settings', settingsRoutes);
   app.use('/api/v1/rooms', roomsRoutes);
   app.use('/api/v1/billing', billingRoutes);
+  app.use('/api/v1/parents', parentsRoutes);
   app.use('/api/v1/staff', staffRoutes);
 
   app.use(notFound);
@@ -27,3 +29,4 @@ function createApp() {
 }
 
 module.exports = { createApp };
+
