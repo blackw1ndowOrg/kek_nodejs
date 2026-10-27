@@ -5,7 +5,7 @@ const {
   updateGroupSchema,
   enrollChildSchema,
   groupChildSchema,
-} = require('../../../src/modules/group/group.schema');
+} = require('../../../src/modules/groups/groups.schema');
 
 const validGroup = { name: 'Сонечко', age: 3, roomId: 6 };
 
@@ -36,9 +36,13 @@ describe('createGroupSchema', () => {
     expect(body).toEqual(validGroup);
   });
 
-  test('з персоналом', () => {
+  test('з персоналом або null', () => {
     const body = { ...validGroup, educatorId: 1, assistantId: 2 };
     expect(createGroupSchema.safeParse({ body }).success).toBe(true);
+    expect(
+      createGroupSchema.safeParse({ body: { ...validGroup, educatorId: null, assistantId: null } })
+        .success
+    ).toBe(true);
   });
 
   test.each([
@@ -48,7 +52,6 @@ describe('createGroupSchema', () => {
     ['вік 6', { ...validGroup, age: 6 }],
     ['без кімнати', { name: 'А', age: 3 }],
     ['кімната рядком', { ...validGroup, roomId: '6' }],
-    ['educatorId: null при створенні', { ...validGroup, educatorId: null }],
     ['невідоме поле', { ...validGroup, children: [1] }],
   ])('%s -> помилка', (_name, body) => {
     expect(createGroupSchema.safeParse({ body }).success).toBe(false);

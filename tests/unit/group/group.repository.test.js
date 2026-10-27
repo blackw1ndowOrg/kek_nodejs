@@ -1,9 +1,9 @@
 const {
-  GroupRepository,
-  groupRepository,
+  GroupsRepository,
+  groupsRepository,
   GROUP_SUMMARY_SELECT,
   GROUP_DETAILS_SELECT,
-} = require('../../../src/modules/group/group.repository');
+} = require('../../../src/modules/groups/groups.repository');
 
 const TAUGHT_BY_9 = { OR: [{ educator: { userId: 9 } }, { assistant: { userId: 9 } }] };
 
@@ -34,12 +34,12 @@ function createRepository({ enrolled = 0 } = {}) {
     staff: { findUnique: jest.fn().mockResolvedValue(null) },
     $transaction: jest.fn((callback) => callback(tx)),
   };
-  return { db, tx, repository: new GroupRepository(db) };
+  return { db, tx, repository: new GroupsRepository(db) };
 }
 
-describe('GroupRepository', () => {
+describe('GroupsRepository', () => {
   test('експортований екземпляр за замовчуванням', () => {
-    expect(groupRepository).toBeInstanceOf(GroupRepository);
+    expect(groupsRepository).toBeInstanceOf(GroupsRepository);
   });
 
   test('findMany: без фільтрів і з фільтром віку та вихователя', async () => {

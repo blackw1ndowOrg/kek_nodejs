@@ -1,6 +1,6 @@
 # Групи (Groups API)
 
-Документація модуля `src/modules/group/`: створення груп, призначення кімнати й персоналу, зарахування та відрахування дітей.
+Документація модуля `src/modules/groups/`: створення груп, призначення кімнати й персоналу, зарахування та відрахування дітей.
 
 ---
 
@@ -17,11 +17,11 @@
 
 | Файл | Відповідальність |
 | --- | --- |
-| `group.schema.js` | Zod-схеми: форма й типи `params`, `query`, `body` |
-| `group.repository.js` | Запити Prisma; атомарне зарахування з блокуванням рядка групи |
-| `group.service.js` | Бізнес-правила: кімната, персонал, вік, ліміти, доступ вихователя |
-| `group.controller.js` | HTTP: дані із запиту → сервіс → статус і JSON |
-| `group.routes.js` | Маршрути й порядок middleware: `auth` → `authorize` → `validate` → controller |
+| `groups.schema.js` | Zod-схеми: форма й типи `params`, `query`, `body` |
+| `groups.repository.js` | Запити Prisma; атомарне зарахування з блокуванням рядка групи |
+| `groups.service.js` | Бізнес-правила: кімната, персонал, вік, ліміти, доступ вихователя |
+| `groups.controller.js` | HTTP: дані із запиту → сервіс → статус і JSON |
+| `groups.routes.js` | Маршрути й порядок middleware: `auth` → `authorize` → `validate` → controller |
 
 Сервіс отримує залежності через конструктор (`repository`, `settings`, `now`), тому тестується без бази та з фіксованою датою.
 
@@ -49,9 +49,9 @@
 | --- | --- | --- |
 | `name` | так | рядок 1–100 символів |
 | `age` | так | ціле від `MIN_AGE` до `MAX_AGE` (2–5) |
-| `roomId` | так | кімната типу `GROUP`, не зайнята іншою групою |
-| `educatorId` | ні | активний працівник типу `EDUCATOR`, не вихователь іншої групи |
-| `assistantId` | ні | активний працівник типу `ASSISTANT`, не помічник іншої групи |
+| `roomId` | так | кімната типу `GROUP`, не зайнята іншою групою чи гуртком |
+| `educatorId` | ні | активний працівник типу `EDUCATOR` (або `null`), не вихователь іншої групи |
+| `assistantId` | ні | активний працівник типу `ASSISTANT` (або `null`), не помічник іншої групи |
 
 ### 3.2. `PATCH /groups/:id`
 
@@ -64,7 +64,7 @@
 | Правило | Помилка |
 | --- | --- |
 | Груп не більше за `MAX_GROUPS` з налаштувань | 409 `CONFLICT` |
-| Кімната існує / має тип `GROUP` / не зайнята іншою групою | 404 / 400 / 409 |
+| Кімната існує / має тип `GROUP` / не зайнята іншою групою чи гуртком | 404 / 400 / 409 |
 | Працівник існує / активний і має потрібну посаду / не працює в іншій групі | 404 / 400 / 409 |
 | Вік групи з активними дітьми змінити не можна | 409 `CONFLICT` |
 | Видалити можна лише групу без активних дітей (розклад видаляється каскадом) | 409 `CONFLICT` |
@@ -91,10 +91,10 @@
 | `tests/unit/group/group.service.test.js` | усі правила з розділу 4 (фейкові репозиторій і налаштування, фіксована дата) |
 | `tests/integration/group.test.js` | Supertest: повний HTTP-ланцюжок для всіх ролей і ендпоінтів |
 
-Покриття `src/modules/group/`: **100%** statements, branches, functions і lines.
+Покриття `src/modules/groups/`: **100%** statements, branches, functions і lines.
 
 ```bash
-npx jest tests/unit/group tests/integration/group.test.js --coverage --collectCoverageFrom='src/modules/group/*.js'
+npx jest tests/unit/group tests/integration/group.test.js --coverage --collectCoverageFrom='src/modules/groups/*.js'
 ```
 
 Блокування `FOR UPDATE` у тестах підмінене; на справжній базі його варто перевірити вручну: два паралельні запити на зарахування в групу з 19 дітьми — один 204, другий 409.

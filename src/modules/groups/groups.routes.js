@@ -10,8 +10,8 @@ const {
   updateGroupSchema,
   enrollChildSchema,
   groupChildSchema,
-} = require('./group.schema');
-const { groupController } = require('./group.controller');
+} = require('./groups.schema');
+const { groupsController } = require('./groups.controller');
 
 // Керують групами адмін і менеджер; вихователь лише переглядає свої групи (обмеження — у сервісі).
 // Батьки бачать групу дитини через модуль children.
@@ -22,27 +22,27 @@ const router = Router();
 
 router.use(auth);
 
-router.get('/', authorize(...STAFF_AND_TEACHER), validate(listGroupsSchema), groupController.list);
+router.get('/', authorize(...STAFF_AND_TEACHER), validate(listGroupsSchema), groupsController.list);
 router.get(
   '/:id',
   authorize(...STAFF_AND_TEACHER),
   validate(groupIdSchema),
-  groupController.getById
+  groupsController.getById
 );
-router.post('/', authorize(...STAFF), validate(createGroupSchema), groupController.create);
-router.patch('/:id', authorize(...STAFF), validate(updateGroupSchema), groupController.update);
-router.delete('/:id', authorize(...STAFF), validate(groupIdSchema), groupController.delete);
+router.post('/', authorize(...STAFF), validate(createGroupSchema), groupsController.create);
+router.patch('/:id', authorize(...STAFF), validate(updateGroupSchema), groupsController.update);
+router.delete('/:id', authorize(...STAFF), validate(groupIdSchema), groupsController.delete);
 router.post(
   '/:id/children',
   authorize(...STAFF),
   validate(enrollChildSchema),
-  groupController.enrollChild
+  groupsController.enrollChild
 );
 router.delete(
   '/:id/children/:childId',
   authorize(...STAFF),
   validate(groupChildSchema),
-  groupController.unenrollChild
+  groupsController.unenrollChild
 );
 
 module.exports = router;

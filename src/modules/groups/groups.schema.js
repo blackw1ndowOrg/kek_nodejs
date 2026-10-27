@@ -25,8 +25,8 @@ const createGroupSchema = z.object({
       name: z.string().trim().min(1).max(MAX_NAME_LENGTH),
       age: groupAge,
       roomId: z.number().int().positive(),
-      educatorId: z.number().int().positive().optional(),
-      assistantId: z.number().int().positive().optional(),
+      educatorId: z.number().int().positive().nullable().optional(),
+      assistantId: z.number().int().positive().nullable().optional(),
     })
     .strict(),
 });

@@ -34,7 +34,7 @@ const taughtBy = (staffUserId) =>
     ? {}
     : { OR: [{ educator: { userId: staffUserId } }, { assistant: { userId: staffUserId } }] };
 
-class GroupRepository {
+class GroupsRepository {
   constructor(db = prisma) {
     this.db = db;
   }
@@ -68,11 +68,16 @@ class GroupRepository {
     return this.db.child.count({ where: { groupId, ...ACTIVE_CHILDREN } });
   }
 
-  /** Кімната і група, яка її займає (якщо є) */
+  /** Кімната і група або гурток, які її займають (якщо є) */
   async findRoom(id) {
     return this.db.room.findUnique({
       where: { id },
-      select: { id: true, type: true, group: { select: { id: true } } },
+      select: {
+        id: true,
+        type: true,
+        group: { select: { id: true } },
+        club: { select: { id: true } },
+      },
     });
   }
 
@@ -133,6 +138,6 @@ class GroupRepository {
   }
 }
 
-const groupRepository = new GroupRepository();
+const groupsRepository = new GroupsRepository();
 
-module.exports = { GroupRepository, groupRepository, GROUP_SUMMARY_SELECT, GROUP_DETAILS_SELECT };
+module.exports = { GroupsRepository, groupsRepository, GROUP_SUMMARY_SELECT, GROUP_DETAILS_SELECT };

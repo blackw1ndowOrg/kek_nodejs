@@ -132,8 +132,13 @@ class ChildrenService {
     }
     this.assertAdminFields(user, data);
 
+    const payload = { ...data };
+    if (payload.isActive === false) {
+      payload.groupId = null;
+    }
+
     try {
-      return this.toResponse(user, await this.repository.update(id, data));
+      return this.toResponse(user, await this.repository.update(id, payload));
     } catch (error) {
       throw translateDbError(error, CHILD_NOT_FOUND);
     }
@@ -142,7 +147,7 @@ class ChildrenService {
   async deactivate(user, id) {
     await this.findAccessible(user, id);
     try {
-      await this.repository.update(id, { isActive: false });
+      await this.repository.update(id, { isActive: false, groupId: null });
     } catch (error) {
       throw translateDbError(error, CHILD_NOT_FOUND);
     }

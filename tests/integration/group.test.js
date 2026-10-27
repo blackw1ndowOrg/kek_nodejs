@@ -4,7 +4,7 @@ const { StatusCodes } = require('http-status-codes');
 const { createApp } = require('../../src/app');
 const { config } = require('../../src/config');
 const { ErrorCodes } = require('../../src/errors/errorCodes');
-const { groupRepository } = require('../../src/modules/group/group.repository');
+const { groupsRepository } = require('../../src/modules/groups/groups.repository');
 const { currentAcademicYear } = require('../../src/domain/age');
 
 // Справжній HTTP-ланцюжок: routes -> auth -> authorize -> validate -> controller -> service.
@@ -26,27 +26,27 @@ describe('Groups API (Supertest)', () => {
 
   beforeEach(() => {
     jest
-      .spyOn(groupRepository, 'findMany')
+      .spyOn(groupsRepository, 'findMany')
       .mockResolvedValue([{ ...GROUP, _count: { children: 4 } }]);
-    jest.spyOn(groupRepository, 'findById').mockResolvedValue({ id: 2, children: [] });
-    jest.spyOn(groupRepository, 'findRawById').mockResolvedValue(GROUP);
-    jest.spyOn(groupRepository, 'count').mockResolvedValue(5);
-    jest.spyOn(groupRepository, 'countActiveChildren').mockResolvedValue(0);
+    jest.spyOn(groupsRepository, 'findById').mockResolvedValue({ id: 2, children: [] });
+    jest.spyOn(groupsRepository, 'findRawById').mockResolvedValue(GROUP);
+    jest.spyOn(groupsRepository, 'count').mockResolvedValue(5);
+    jest.spyOn(groupsRepository, 'countActiveChildren').mockResolvedValue(0);
     jest
-      .spyOn(groupRepository, 'findRoom')
-      .mockResolvedValue({ id: 6, type: 'GROUP', group: null });
-    jest.spyOn(groupRepository, 'findStaff').mockResolvedValue(null);
-    jest.spyOn(groupRepository, 'findChild').mockResolvedValue({
+      .spyOn(groupsRepository, 'findRoom')
+      .mockResolvedValue({ id: 6, type: 'GROUP', group: null, club: null });
+    jest.spyOn(groupsRepository, 'findStaff').mockResolvedValue(null);
+    jest.spyOn(groupsRepository, 'findChild').mockResolvedValue({
       id: 5,
       birthDate: THREE_YEARS_OLD,
       isActive: true,
       groupId: null,
     });
-    jest.spyOn(groupRepository, 'create').mockResolvedValue({ ...GROUP, _count: { children: 0 } });
-    jest.spyOn(groupRepository, 'update').mockResolvedValue({ ...GROUP, _count: { children: 0 } });
-    jest.spyOn(groupRepository, 'delete').mockResolvedValue(undefined);
-    jest.spyOn(groupRepository, 'enrollChildIfCapacity').mockResolvedValue(true);
-    jest.spyOn(groupRepository, 'unenrollChild').mockResolvedValue(undefined);
+    jest.spyOn(groupsRepository, 'create').mockResolvedValue({ ...GROUP, _count: { children: 0 } });
+    jest.spyOn(groupsRepository, 'update').mockResolvedValue({ ...GROUP, _count: { children: 0 } });
+    jest.spyOn(groupsRepository, 'delete').mockResolvedValue(undefined);
+    jest.spyOn(groupsRepository, 'enrollChildIfCapacity').mockResolvedValue(true);
+    jest.spyOn(groupsRepository, 'unenrollChild').mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -89,13 +89,13 @@ describe('Groups API (Supertest)', () => {
       const res = await request(app).get(`${BASE}?age=3`).set('Authorization', tokenFor('MANAGER'));
       expect(res.status).toBe(StatusCodes.OK);
       expect(res.body).toEqual({ groups: [{ ...GROUP, childrenCount: 4 }] });
-      expect(groupRepository.findMany).toHaveBeenCalledWith({ age: 3, staffUserId: undefined });
+      expect(groupsRepository.findMany).toHaveBeenCalledWith({ age: 3, staffUserId: undefined });
     });
 
     test('вихователь: лише свої групи', async () => {
       const res = await request(app).get(BASE).set('Authorization', tokenFor('TEACHER'));
       expect(res.status).toBe(StatusCodes.OK);
-      expect(groupRepository.findMany).toHaveBeenCalledWith({ staffUserId: 9 });
+      expect(groupsRepository.findMany).toHaveBeenCalledWith({ staffUserId: 9 });
     });
 
     test('вік поза 2–5 у фільтрі -> 400', async () => {
@@ -113,10 +113,10 @@ describe('Groups API (Supertest)', () => {
     });
 
     test('чужа група вихователя -> 404', async () => {
-      groupRepository.findById.mockResolvedValueOnce(null);
+      groupsRepository.findById.mockResolvedValueOnce(null);
       const res = await request(app).get(`${BASE}/7`).set('Authorization', tokenFor('TEACHER'));
       expect(res.status).toBe(StatusCodes.NOT_FOUND);
-      expect(groupRepository.findById).toHaveBeenCalledWith(7, 9);
+      expect(groupsRepository.findById).toHaveBeenCalledWith(7, 9);
     });
   });
 
@@ -138,8 +138,28 @@ describe('Groups API (Supertest)', () => {
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
     });
 
-    test('кімната зайнята -> 409', async () => {
-      groupRepository.findRoom.mockResolvedValueOnce({ id: 6, type: 'GROUP', group: { id: 8 } });
+    test('кімната зайнята іншою групою -> 409', async () => {
+      groupsRepository.findRoom.mockResolvedValueOnce({
+        id: 6,
+        type: 'GROUP',
+        group: { id: 8 },
+        club: null,
+      });
+      const res = await request(app)
+        .post(BASE)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ name: 'Сонечко', age: 3, roomId: 6 });
+      expect(res.status).toBe(StatusCodes.CONFLICT);
+      expect(res.body.error.code).toBe(ErrorCodes.CONFLICT);
+    });
+
+    test('кімната зайнята гуртком -> 409', async () => {
+      groupsRepository.findRoom.mockResolvedValueOnce({
+        id: 6,
+        type: 'GROUP',
+        group: null,
+        club: { id: 3 },
+      });
       const res = await request(app)
         .post(BASE)
         .set('Authorization', tokenFor('ADMIN'))
@@ -164,11 +184,11 @@ describe('Groups API (Supertest)', () => {
         .set('Authorization', tokenFor('MANAGER'))
         .send({ educatorId: null });
       expect(res.status).toBe(StatusCodes.OK);
-      expect(groupRepository.update).toHaveBeenCalledWith(2, { educatorId: null });
+      expect(groupsRepository.update).toHaveBeenCalledWith(2, { educatorId: null });
     });
 
     test('змінити вік групи з дітьми -> 409', async () => {
-      groupRepository.countActiveChildren.mockResolvedValueOnce(3);
+      groupsRepository.countActiveChildren.mockResolvedValueOnce(3);
       const res = await request(app)
         .patch(`${BASE}/2`)
         .set('Authorization', tokenFor('ADMIN'))
@@ -181,11 +201,11 @@ describe('Groups API (Supertest)', () => {
     test('порожня група: 204', async () => {
       const res = await request(app).delete(`${BASE}/2`).set('Authorization', tokenFor('ADMIN'));
       expect(res.status).toBe(StatusCodes.NO_CONTENT);
-      expect(groupRepository.delete).toHaveBeenCalledWith(2);
+      expect(groupsRepository.delete).toHaveBeenCalledWith(2);
     });
 
     test('група з дітьми -> 409', async () => {
-      groupRepository.countActiveChildren.mockResolvedValueOnce(2);
+      groupsRepository.countActiveChildren.mockResolvedValueOnce(2);
       const res = await request(app).delete(`${BASE}/2`).set('Authorization', tokenFor('ADMIN'));
       expect(res.status).toBe(StatusCodes.CONFLICT);
     });
@@ -198,11 +218,11 @@ describe('Groups API (Supertest)', () => {
         .set('Authorization', tokenFor('MANAGER'))
         .send({ childId: 5 });
       expect(res.status).toBe(StatusCodes.NO_CONTENT);
-      expect(groupRepository.enrollChildIfCapacity).toHaveBeenCalledWith(2, 5, 20);
+      expect(groupsRepository.enrollChildIfCapacity).toHaveBeenCalledWith(2, 5, 20);
     });
 
     test('група заповнена -> 409', async () => {
-      groupRepository.enrollChildIfCapacity.mockResolvedValueOnce(false);
+      groupsRepository.enrollChildIfCapacity.mockResolvedValueOnce(false);
       const res = await request(app)
         .post(`${BASE}/2/children`)
         .set('Authorization', tokenFor('MANAGER'))
@@ -211,7 +231,7 @@ describe('Groups API (Supertest)', () => {
     });
 
     test('вік дитини не збігається з віком групи -> 400', async () => {
-      groupRepository.findRawById.mockResolvedValueOnce({ ...GROUP, age: 5 });
+      groupsRepository.findRawById.mockResolvedValueOnce({ ...GROUP, age: 5 });
       const res = await request(app)
         .post(`${BASE}/2/children`)
         .set('Authorization', tokenFor('MANAGER'))
@@ -221,12 +241,12 @@ describe('Groups API (Supertest)', () => {
     });
 
     test('DELETE /groups/:id/children/:childId: 204', async () => {
-      groupRepository.findChild.mockResolvedValueOnce({ id: 5, isActive: true, groupId: 2 });
+      groupsRepository.findChild.mockResolvedValueOnce({ id: 5, isActive: true, groupId: 2 });
       const res = await request(app)
         .delete(`${BASE}/2/children/5`)
         .set('Authorization', tokenFor('MANAGER'));
       expect(res.status).toBe(StatusCodes.NO_CONTENT);
-      expect(groupRepository.unenrollChild).toHaveBeenCalledWith(5);
+      expect(groupsRepository.unenrollChild).toHaveBeenCalledWith(5);
     });
 
     test('дитина не з цієї групи -> 404', async () => {

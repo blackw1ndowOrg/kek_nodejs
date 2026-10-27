@@ -48,7 +48,7 @@ const { auth } = require('../../middleware/auth');
 const { authorize } = require('../../middleware/authorize');
 
 // Доступ лише для Admin та Manager:
-router.post('/groups', auth, authorize('ADMIN', 'MANAGER'), groupController.create);
+router.post('/groups', auth, authorize('ADMIN', 'MANAGER'), groupsController.create);
 ```
 
 ---

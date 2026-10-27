@@ -2,7 +2,7 @@ const { Role, RoomType, StaffType } = require('@prisma/client');
 const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/AppError');
 const { ageOnSeptemberFirst, currentAcademicYear } = require('../../domain/age');
 const { settingsService } = require('../settings/settings.service');
-const { groupRepository } = require('./group.repository');
+const { groupsRepository } = require('./groups.repository');
 
 // Коди помилок Prisma: дані змінилися між перевіркою в сервісі й записом у базу
 const UNIQUE_VIOLATION = 'P2002'; // кімнату чи працівника щойно зайняла інша група
@@ -31,13 +31,13 @@ const STAFF_SLOTS = Object.freeze({
   assistantId: { type: StaffType.ASSISTANT, takenBy: 'assistantOf' },
 });
 
-class GroupService {
+class GroupsService {
   /**
    * @param {object} repository
    * @param {{ get: (key: string) => * }} settings кеш налаштувань
    * @param {() => Date} now поточна дата (підміняється в тестах)
    */
-  constructor(repository = groupRepository, settings = settingsService, now = () => new Date()) {
+  constructor(repository = groupsRepository, settings = settingsService, now = () => new Date()) {
     this.repository = repository;
     this.settings = settings;
     this.now = now;
@@ -61,7 +61,7 @@ class GroupService {
     return group;
   }
 
-  /** Кімната існує, призначена для груп і не зайнята іншою групою */
+  /** Кімната існує, призначена для груп і не зайнята іншою групою чи гуртком */
   async assertRoomAvailable(roomId, groupId) {
     const room = await this.repository.findRoom(roomId);
     if (!room) {
@@ -69,6 +69,9 @@ class GroupService {
     }
     if (room.type !== RoomType.GROUP) {
       throw new BadRequestError('Кімната не призначена для груп');
+    }
+    if (room.club) {
+      throw new ConflictError('Кімнату вже займає гурток');
     }
     if (room.group && room.group.id !== groupId) {
       throw new ConflictError('Кімнату вже займає інша група');
@@ -208,6 +211,6 @@ class GroupService {
   }
 }
 
-const groupService = new GroupService();
+const groupsService = new GroupsService();
 
-module.exports = { GroupService, groupService };
+module.exports = { GroupsService, groupsService };

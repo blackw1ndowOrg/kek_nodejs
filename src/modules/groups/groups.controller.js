@@ -1,9 +1,9 @@
 const { StatusCodes } = require('http-status-codes');
-const { groupService } = require('./group.service');
+const { groupsService } = require('./groups.service');
 
 // Лише HTTP: дістає дані із запиту (вже провалідовані Zod) і повертає статус. Логіка — у сервісі.
-class GroupController {
-  constructor(service = groupService) {
+class GroupsController {
+  constructor(service = groupsService) {
     this.service = service;
   }
 
@@ -43,6 +43,6 @@ class GroupController {
   };
 }
 
-const groupController = new GroupController();
+const groupsController = new GroupsController();
 
-module.exports = { GroupController, groupController };
+module.exports = { GroupsController, groupsController };

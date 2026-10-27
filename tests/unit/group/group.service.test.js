@@ -1,4 +1,4 @@
-const { GroupService, groupService } = require('../../../src/modules/group/group.service');
+const { GroupsService, groupsService } = require('../../../src/modules/groups/groups.service');
 const { BadRequestError, ConflictError, NotFoundError } = require('../../../src/errors/AppError');
 
 const ADMIN = { id: 1, role: 'ADMIN' };
@@ -18,7 +18,7 @@ const GROUP = Object.freeze({
 const SUMMARY_FROM_DB = Object.freeze({ ...GROUP, _count: { children: 4 } });
 const SETTINGS = Object.freeze({ MAX_GROUPS: 30, MAX_CHILDREN_IN_GROUP: 20 });
 
-const FREE_ROOM = { id: 6, type: 'GROUP', group: null };
+const FREE_ROOM = { id: 6, type: 'GROUP', group: null, club: null };
 const FREE_EDUCATOR = {
   id: 1,
   type: 'EDUCATOR',
@@ -54,16 +54,16 @@ function createService() {
     unenrollChild: jest.fn().mockResolvedValue(undefined),
   };
   const settings = { get: jest.fn((key) => SETTINGS[key]) };
-  const service = new GroupService(repository, settings, () => TODAY);
+  const service = new GroupsService(repository, settings, () => TODAY);
   return { repository, settings, service };
 }
 
 const SUMMARY = { ...GROUP, childrenCount: 4 };
 
-describe('GroupService', () => {
+describe('GroupsService', () => {
   test('експортований екземпляр за замовчуванням', () => {
-    expect(groupService).toBeInstanceOf(GroupService);
-    expect(groupService.now()).toBeInstanceOf(Date);
+    expect(groupsService).toBeInstanceOf(GroupsService);
+    expect(groupsService.now()).toBeInstanceOf(Date);
   });
 
   describe('list і getById', () => {
@@ -121,8 +121,13 @@ describe('GroupService', () => {
 
     test.each([
       ['кімнати немає', null, NotFoundError],
-      ['кімната гуртка', { id: 6, type: 'CLUB', group: null }, BadRequestError],
-      ['кімнату займає інша група', { id: 6, type: 'GROUP', group: { id: 8 } }, ConflictError],
+      ['кімната гуртка', { id: 6, type: 'CLUB', group: null, club: null }, BadRequestError],
+      ['кімнату займає гурток', { id: 6, type: 'GROUP', group: null, club: { id: 4 } }, ConflictError],
+      [
+        'кімнату займає інша група',
+        { id: 6, type: 'GROUP', group: { id: 8 }, club: null },
+        ConflictError,
+      ],
     ])('%s', async (_name, room, ErrorClass) => {
       const { repository, service } = createService();
       repository.findRoom.mockResolvedValueOnce(room);
@@ -152,7 +157,12 @@ describe('GroupService', () => {
   describe('update', () => {
     test('та сама кімната й той самий вихователь цієї групи — не конфлікт', async () => {
       const { repository, service } = createService();
-      repository.findRoom.mockResolvedValueOnce({ id: 6, type: 'GROUP', group: { id: 2 } });
+      repository.findRoom.mockResolvedValueOnce({
+        id: 6,
+        type: 'GROUP',
+        group: { id: 2 },
+        club: null,
+      });
       repository.findStaff.mockResolvedValueOnce({ ...FREE_EDUCATOR, educatorOf: { id: 2 } });
       await expect(service.update(2, { roomId: 6, educatorId: 1 })).resolves.toEqual(SUMMARY);
     });
