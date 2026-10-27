@@ -172,6 +172,12 @@ describe('ChildrenService', () => {
       expect(child).not.toHaveProperty('hasDeputyRelatives');
     });
 
+    test('деактивація через update скидає groupId на null', async () => {
+      const { repository, service } = createService();
+      await service.update(MANAGER, 5, { isActive: false });
+      expect(repository.update).toHaveBeenCalledWith(5, { isActive: false, groupId: null });
+    });
+
     test('батько не може змінювати інші поля -> 403', async () => {
       const { repository, service } = createService();
       await expect(service.update(PARENT, 5, { fullName: 'Інше' })).rejects.toThrow(ForbiddenError);
@@ -204,10 +210,10 @@ describe('ChildrenService', () => {
   });
 
   describe('deactivate', () => {
-    test('м’яке видалення: isActive = false', async () => {
+    test('м’яке видалення: isActive = false і groupId = null', async () => {
       const { repository, service } = createService();
       await expect(service.deactivate(MANAGER, 5)).resolves.toBeUndefined();
-      expect(repository.update).toHaveBeenCalledWith(5, { isActive: false });
+      expect(repository.update).toHaveBeenCalledWith(5, { isActive: false, groupId: null });
     });
 
     test('неіснуюча дитина -> 404', async () => {

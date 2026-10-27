@@ -211,7 +211,10 @@ describe('Children API (Supertest)', () => {
         .set('Authorization', tokenFor('MANAGER', 2));
       expect(res.status).toBe(StatusCodes.NO_CONTENT);
       expect(res.body).toEqual({});
-      expect(childrenRepository.update).toHaveBeenCalledWith(5, { isActive: false });
+      expect(childrenRepository.update).toHaveBeenCalledWith(5, {
+        isActive: false,
+        groupId: null,
+      });
     });
 
     test('неіснуюча дитина -> 404', async () => {
