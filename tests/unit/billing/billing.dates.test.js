@@ -1,4 +1,8 @@
-const { startOfUtcDay, addMonthsUtc, toIsoDate } = require('../../../src/modules/billing/billing.dates');
+const {
+  startOfUtcDay,
+  addMonthsUtc,
+  toIsoDate,
+} = require('../../../src/modules/billing/billing.dates');
 
 const utc = (iso) => new Date(`${iso}T00:00:00.000Z`);
 

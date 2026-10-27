@@ -16,7 +16,9 @@ describe('errorHandler', () => {
     const err = new ConflictError('Group is full');
     errorHandler(err, {}, res, () => {});
     expect(res.status).toHaveBeenCalledWith(StatusCodes.CONFLICT);
-    expect(res.json).toHaveBeenCalledWith({ error: { code: ErrorCodes.CONFLICT, message: 'Group is full' } });
+    expect(res.json).toHaveBeenCalledWith({
+      error: { code: ErrorCodes.CONFLICT, message: 'Group is full' },
+    });
   });
 
   test('помилка ZodError перетворюється на 400 з валідаційними деталями', () => {

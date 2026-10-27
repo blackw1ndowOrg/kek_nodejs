@@ -3,11 +3,7 @@ const {
   roomsService,
   translateDbError,
 } = require('../../../src/modules/rooms/rooms.service');
-const {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
-} = require('../../../src/errors/AppError');
+const { BadRequestError, ConflictError, NotFoundError } = require('../../../src/errors/AppError');
 
 const SETTINGS = Object.freeze({ DEFAULT_ROOMS_COUNT: 10, ROOM_MONTHLY_COST: 150000 });
 
@@ -107,9 +103,7 @@ describe('RoomsService', () => {
     test('вартість 0 не підміняється значенням із налаштувань', async () => {
       const { repository, service } = createService();
       await service.create({ name: 'А', type: 'GROUP', monthlyCost: 0 });
-      expect(repository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ monthlyCost: 0 })
-      );
+      expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({ monthlyCost: 0 }));
     });
 
     test.each([

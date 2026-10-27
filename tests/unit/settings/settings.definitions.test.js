@@ -53,8 +53,14 @@ describe('SETTING_DEFINITIONS, SETTING_KEYS, DEFINITIONS_BY_CONSTANT', () => {
   });
 });
 
-const MONEY_MIN_1 = { valid: [1, 1500, MAX_MONEY], invalid: [0, -1, MAX_MONEY + 1, 10.5, '100', null] };
-const MONEY_MIN_0 = { valid: [0, 1500, MAX_MONEY], invalid: [-1, MAX_MONEY + 1, 10.5, '100', null] };
+const MONEY_MIN_1 = {
+  valid: [1, 1500, MAX_MONEY],
+  invalid: [0, -1, MAX_MONEY + 1, 10.5, '100', null],
+};
+const MONEY_MIN_0 = {
+  valid: [0, 1500, MAX_MONEY],
+  invalid: [-1, MAX_MONEY + 1, 10.5, '100', null],
+};
 const COUNT_MIN_1 = { valid: [1, 20, 100], invalid: [0, -1, 101, 1.5, '5'] };
 const COUNT_MIN_0 = { valid: [0, 12, 100], invalid: [-1, 101, 1.5, '5'] };
 
@@ -98,7 +104,9 @@ describe('правила валідації числових налаштува�
   test('повідомлення про помилки містять назву поля', () => {
     const { schema } = SETTING_DEFINITIONS.tuitionMonthly;
     expect(schema.safeParse('x').error.issues[0].message).toBe('Monthly tuition: must be a number');
-    expect(schema.safeParse(1.5).error.issues[0].message).toBe('Monthly tuition: must be an integer');
+    expect(schema.safeParse(1.5).error.issues[0].message).toBe(
+      'Monthly tuition: must be an integer'
+    );
     expect(schema.safeParse(0).error.issues[0].message).toBe('Monthly tuition: must be at least 1');
     expect(schema.safeParse(MAX_MONEY + 1).error.issues[0].message).toBe(
       `Monthly tuition: must be at most ${MAX_MONEY}`

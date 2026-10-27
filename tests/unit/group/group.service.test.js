@@ -122,7 +122,11 @@ describe('GroupsService', () => {
     test.each([
       ['кімнати немає', null, NotFoundError],
       ['кімната гуртка', { id: 6, type: 'CLUB', group: null, club: null }, BadRequestError],
-      ['кімнату займає гурток', { id: 6, type: 'GROUP', group: null, club: { id: 4 } }, ConflictError],
+      [
+        'кімнату займає гурток',
+        { id: 6, type: 'GROUP', group: null, club: { id: 4 } },
+        ConflictError,
+      ],
       [
         'кімнату займає інша група',
         { id: 6, type: 'GROUP', group: { id: 8 }, club: null },

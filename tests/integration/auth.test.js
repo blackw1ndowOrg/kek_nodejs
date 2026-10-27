@@ -46,7 +46,7 @@ describe('Auth Integration Tests (Supertest)', () => {
       expect(res.body.error.code).toBe(ErrorCodes.UNAUTHORIZED);
     });
 
-    test('успішний логін (200): повертає JWT токен та об\'єкт user без passwordHash', async () => {
+    test("успішний логін (200): повертає JWT токен та об'єкт user без passwordHash", async () => {
       const passwordHash = await bcrypt.hash('secret123', 10);
       jest.spyOn(authRepository, 'findByEmail').mockResolvedValueOnce({
         id: 5,

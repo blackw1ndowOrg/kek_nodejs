@@ -145,9 +145,9 @@ describe('Auth Module Unit Tests', () => {
       };
       const service = new AuthService(mockRepo);
 
-      await expect(service.login({ email: 'user@kg.ua', password: 'wrongPassword' })).rejects.toThrow(
-        UnauthorizedError
-      );
+      await expect(
+        service.login({ email: 'user@kg.ua', password: 'wrongPassword' })
+      ).rejects.toThrow(UnauthorizedError);
     });
 
     test('me: успішно повертає профіль користувача', async () => {

@@ -4,21 +4,13 @@ jest.mock('../../../src/domain/pricing', () => ({
   yearlyTotal: jest.fn(),
 }));
 
-const {
-  tuitionMonthly,
-  monthlyTotal,
-  yearlyTotal,
-} = require('../../../src/domain/pricing');
+const { tuitionMonthly, monthlyTotal, yearlyTotal } = require('../../../src/domain/pricing');
 const {
   BillingService,
   billingService,
   CURRENCY,
 } = require('../../../src/modules/billing/billing.service');
-const {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
-} = require('../../../src/errors/AppError');
+const { BadRequestError, ConflictError, NotFoundError } = require('../../../src/errors/AppError');
 
 const PARENT = { id: 9, role: 'PARENT' };
 const OTHER_PARENT = { id: 10, role: 'PARENT' };
@@ -98,21 +90,21 @@ describe('BillingService', () => {
       await expect(service.loadAccessibleChild(PARENT, 5)).rejects.toThrow(NotFoundError);
     });
 
-    test.each([['ADMIN', ADMIN], ['MANAGER', MANAGER]])(
-      '%s бачить будь-яку дитину',
-      async (_role, user) => {
-        const { service } = createService();
-        await expect(service.loadAccessibleChild(user, 5)).resolves.toBe(CHILD);
-      }
-    );
+    test.each([
+      ['ADMIN', ADMIN],
+      ['MANAGER', MANAGER],
+    ])('%s бачить будь-яку дитину', async (_role, user) => {
+      const { service } = createService();
+      await expect(service.loadAccessibleChild(user, 5)).resolves.toBe(CHILD);
+    });
 
-    test.each([['PARENT', PARENT], ['ADMIN', ADMIN]])(
-      'дитини немає -> 404 (%s)',
-      async (_role, user) => {
-        const { service } = createService(null);
-        await expect(service.loadAccessibleChild(user, 99)).rejects.toThrow(NotFoundError);
-      }
-    );
+    test.each([
+      ['PARENT', PARENT],
+      ['ADMIN', ADMIN],
+    ])('дитини немає -> 404 (%s)', async (_role, user) => {
+      const { service } = createService(null);
+      await expect(service.loadAccessibleChild(user, 99)).rejects.toThrow(NotFoundError);
+    });
   });
 
   describe('calculate', () => {
@@ -137,11 +129,15 @@ describe('BillingService', () => {
       expect(settings.get).toHaveBeenCalledWith('MEAL_PER_EXTRA_YEAR');
       expect(settings.get).toHaveBeenCalledWith('YEARLY_DISCOUNT_PERCENT');
       expect(tuitionMonthly).toHaveBeenCalledWith(10, 300000, SETTINGS.DISCOUNT_LEVELS);
-      expect(monthlyTotal).toHaveBeenCalledWith(
-        3, 10, 300000, SETTINGS.DISCOUNT_LEVELS, 5000, 500
-      );
+      expect(monthlyTotal).toHaveBeenCalledWith(3, 10, 300000, SETTINGS.DISCOUNT_LEVELS, 5000, 500);
       expect(yearlyTotal).toHaveBeenCalledWith(
-        3, 10, 300000, SETTINGS.DISCOUNT_LEVELS, 10, 5000, 500
+        3,
+        10,
+        300000,
+        SETTINGS.DISCOUNT_LEVELS,
+        10,
+        5000,
+        500
       );
     });
   });
@@ -224,14 +220,20 @@ describe('BillingService', () => {
         paidUntil: '2026-11-26',
       });
       expect(repository.updatePaidUntil).toHaveBeenCalledWith(
-        5, null, new Date('2026-11-26T00:00:00Z')
+        5,
+        null,
+        new Date('2026-11-26T00:00:00Z')
       );
     });
 
     test('оплата за рік: +12 місяців і річна сума', async () => {
       const { service } = createService();
       const result = await service.payForChild(PARENT, 5, 'YEARLY', NOW);
-      expect(result).toMatchObject({ plan: 'YEARLY', amount: YEARLY_TOTAL, paidUntil: '2027-10-26' });
+      expect(result).toMatchObject({
+        plan: 'YEARLY',
+        amount: YEARLY_TOTAL,
+        paidUntil: '2027-10-26',
+      });
     });
 
     test('plan не передано -> береться paymentPlan дитини', async () => {
@@ -257,13 +259,20 @@ describe('BillingService', () => {
       const result = await service.payForChild(PARENT, 5, 'MONTHLY', NOW);
       expect(result.paidUntil).toBe(expected);
       expect(repository.updatePaidUntil).toHaveBeenCalledWith(
-        5, new Date(paidUntil), new Date(`${expected}T00:00:00Z`)
+        5,
+        new Date(paidUntil),
+        new Date(`${expected}T00:00:00Z`)
       );
     });
 
     test('31 січня + місяць -> 28 лютого', async () => {
       const { service } = createService();
-      const result = await service.payForChild(PARENT, 5, 'MONTHLY', new Date('2026-01-31T12:00:00Z'));
+      const result = await service.payForChild(
+        PARENT,
+        5,
+        'MONTHLY',
+        new Date('2026-01-31T12:00:00Z')
+      );
       expect(result.paidUntil).toBe('2026-02-28');
     });
 
@@ -293,13 +302,20 @@ describe('BillingService', () => {
 
     test('чужа дитина -> 404, оплата не записується', async () => {
       const { repository, service } = createService();
-      await expect(service.payForChild(OTHER_PARENT, 5, 'MONTHLY', NOW)).rejects.toThrow(NotFoundError);
+      await expect(service.payForChild(OTHER_PARENT, 5, 'MONTHLY', NOW)).rejects.toThrow(
+        NotFoundError
+      );
       expect(repository.updatePaidUntil).not.toHaveBeenCalled();
     });
 
-    test.each([['ADMIN', ADMIN], ['MANAGER', MANAGER]])('%s може оплатити за будь-яку дитину', async (_r, user) => {
+    test.each([
+      ['ADMIN', ADMIN],
+      ['MANAGER', MANAGER],
+    ])('%s може оплатити за будь-яку дитину', async (_r, user) => {
       const { service } = createService();
-      await expect(service.payForChild(user, 5, 'MONTHLY', NOW)).resolves.toMatchObject({ childId: 5 });
+      await expect(service.payForChild(user, 5, 'MONTHLY', NOW)).resolves.toMatchObject({
+        childId: 5,
+      });
     });
   });
 });

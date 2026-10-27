@@ -15,11 +15,9 @@ describe('Staff Integration Tests (Supertest)', () => {
     });
   });
 
-  const adminToken = jwt.sign(
-    { id: 1, email: 'admin@kg.local', role: 'ADMIN' },
-    config.jwtSecret,
-    { expiresIn: '30m' }
-  );
+  const adminToken = jwt.sign({ id: 1, email: 'admin@kg.local', role: 'ADMIN' }, config.jwtSecret, {
+    expiresIn: '30m',
+  });
 
   const teacherToken = jwt.sign(
     { id: 2, email: 'teacher@kg.local', role: 'TEACHER' },
@@ -48,9 +46,7 @@ describe('Staff Integration Tests (Supertest)', () => {
     });
 
     test('дозволяє TEACHER читати список staff (200 OK)', async () => {
-      jest.spyOn(staffRepository, 'findAll').mockResolvedValueOnce([
-        { id: 1, fullName: 'Марія' },
-      ]);
+      jest.spyOn(staffRepository, 'findAll').mockResolvedValueOnce([{ id: 1, fullName: 'Марія' }]);
 
       const res = await request(app)
         .get('/api/v1/staff')
@@ -102,9 +98,9 @@ describe('Staff Integration Tests (Supertest)', () => {
 
   describe('GET /api/v1/staff', () => {
     test('повертає 200 та список працівників', async () => {
-      jest.spyOn(staffRepository, 'findAll').mockResolvedValueOnce([
-        { id: 1, fullName: 'Оксана', type: 'EDUCATOR', isActive: true },
-      ]);
+      jest
+        .spyOn(staffRepository, 'findAll')
+        .mockResolvedValueOnce([{ id: 1, fullName: 'Оксана', type: 'EDUCATOR', isActive: true }]);
 
       const res = await request(app)
         .get('/api/v1/staff')
@@ -116,9 +112,9 @@ describe('Staff Integration Tests (Supertest)', () => {
     });
 
     test('GET з query isActive=true валідується та повертає 200', async () => {
-      jest.spyOn(staffRepository, 'findAll').mockResolvedValueOnce([
-        { id: 1, fullName: 'Оксана', type: 'EDUCATOR', isActive: true },
-      ]);
+      jest
+        .spyOn(staffRepository, 'findAll')
+        .mockResolvedValueOnce([{ id: 1, fullName: 'Оксана', type: 'EDUCATOR', isActive: true }]);
 
       const res = await request(app)
         .get('/api/v1/staff?isActive=true')

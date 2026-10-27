@@ -81,13 +81,17 @@ describe('Rooms API (Supertest)', () => {
     });
 
     test('фільтр за типом', async () => {
-      const res = await request(app).get(`${BASE}?type=CLUB`).set('Authorization', tokenFor('ADMIN'));
+      const res = await request(app)
+        .get(`${BASE}?type=CLUB`)
+        .set('Authorization', tokenFor('ADMIN'));
       expect(res.status).toBe(StatusCodes.OK);
       expect(roomsRepository.findMany).toHaveBeenCalledWith({ type: 'CLUB' });
     });
 
     test('невідомий тип у фільтрі -> 400', async () => {
-      const res = await request(app).get(`${BASE}?type=OFFICE`).set('Authorization', tokenFor('ADMIN'));
+      const res = await request(app)
+        .get(`${BASE}?type=OFFICE`)
+        .set('Authorization', tokenFor('ADMIN'));
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
       expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
     });
@@ -166,7 +170,9 @@ describe('Rooms API (Supertest)', () => {
     });
 
     test('назва вже існує (P2002) -> 409', async () => {
-      roomsRepository.create.mockRejectedValueOnce(Object.assign(new Error('dup'), { code: 'P2002' }));
+      roomsRepository.create.mockRejectedValueOnce(
+        Object.assign(new Error('dup'), { code: 'P2002' })
+      );
       const res = await request(app)
         .post(BASE)
         .set('Authorization', tokenFor('ADMIN'))
@@ -175,7 +181,9 @@ describe('Rooms API (Supertest)', () => {
     });
 
     test('значення поза діапазоном бази (P2020) -> 400', async () => {
-      roomsRepository.create.mockRejectedValueOnce(Object.assign(new Error('range'), { code: 'P2020' }));
+      roomsRepository.create.mockRejectedValueOnce(
+        Object.assign(new Error('range'), { code: 'P2020' })
+      );
       const res = await request(app)
         .post(BASE)
         .set('Authorization', tokenFor('ADMIN'))
@@ -224,7 +232,9 @@ describe('Rooms API (Supertest)', () => {
     });
 
     test('кімнати немає (P2025) -> 404', async () => {
-      roomsRepository.update.mockRejectedValueOnce(Object.assign(new Error('nf'), { code: 'P2025' }));
+      roomsRepository.update.mockRejectedValueOnce(
+        Object.assign(new Error('nf'), { code: 'P2025' })
+      );
       const res = await request(app)
         .patch(`${BASE}/99`)
         .set('Authorization', tokenFor('ADMIN'))

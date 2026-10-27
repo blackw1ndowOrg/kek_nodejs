@@ -78,9 +78,7 @@ describe('ParentsRepository - Unit Tests', () => {
 
       const result = await repo.create(data);
 
-      expect(mockDb.parent.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data })
-      );
+      expect(mockDb.parent.create).toHaveBeenCalledWith(expect.objectContaining({ data }));
       expect(result.id).toBe(1);
     });
 

@@ -15,11 +15,9 @@ describe('Parents Integration Tests (Supertest)', () => {
     });
   });
 
-  const adminToken = jwt.sign(
-    { id: 1, email: 'admin@kg.local', role: 'ADMIN' },
-    config.jwtSecret,
-    { expiresIn: '30m' }
-  );
+  const adminToken = jwt.sign({ id: 1, email: 'admin@kg.local', role: 'ADMIN' }, config.jwtSecret, {
+    expiresIn: '30m',
+  });
 
   const teacherToken = jwt.sign(
     { id: 2, email: 'teacher@kg.local', role: 'TEACHER' },
@@ -43,7 +41,7 @@ describe('Parents Integration Tests (Supertest)', () => {
   });
 
   describe('POST /api/v1/parents', () => {
-    test('повертає 400 якщо не передано обов\'язкове поле fullName', async () => {
+    test("повертає 400 якщо не передано обов'язкове поле fullName", async () => {
       const res = await request(app)
         .post('/api/v1/parents')
         .set('Authorization', `Bearer ${adminToken}`)
@@ -83,9 +81,11 @@ describe('Parents Integration Tests (Supertest)', () => {
 
   describe('GET /api/v1/parents', () => {
     test('повертає 200 та список батьків', async () => {
-      jest.spyOn(parentsRepository, 'findAll').mockResolvedValueOnce([
-        { id: 1, fullName: 'Марія Коваль', phone: '+380509998877', debt: 0 },
-      ]);
+      jest
+        .spyOn(parentsRepository, 'findAll')
+        .mockResolvedValueOnce([
+          { id: 1, fullName: 'Марія Коваль', phone: '+380509998877', debt: 0 },
+        ]);
 
       const res = await request(app)
         .get('/api/v1/parents')
@@ -116,7 +116,7 @@ describe('Parents Integration Tests (Supertest)', () => {
       expect(res.status).toBe(StatusCodes.NOT_FOUND);
     });
 
-    test('повертає 200 та об\'єкт батьків', async () => {
+    test("повертає 200 та об'єкт батьків", async () => {
       jest.spyOn(parentsRepository, 'findById').mockResolvedValueOnce({
         id: 1,
         fullName: 'Петро',
@@ -139,22 +139,22 @@ describe('Parents Integration Tests (Supertest)', () => {
     test('повертає 200 та оновлені дані', async () => {
       jest.spyOn(parentsRepository, 'findById').mockResolvedValueOnce({
         id: 42,
-        fullName: 'Старе Ім\'я',
+        fullName: "Старе Ім'я",
         debt: 0,
       });
       jest.spyOn(parentsRepository, 'update').mockResolvedValueOnce({
         id: 42,
-        fullName: 'Оновлене Ім\'я',
+        fullName: "Оновлене Ім'я",
         debt: 10000,
       });
 
       const res = await request(app)
         .patch('/api/v1/parents/42')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ fullName: 'Оновлене Ім\'я', debt: 10000 });
+        .send({ fullName: "Оновлене Ім'я", debt: 10000 });
 
       expect(res.status).toBe(StatusCodes.OK);
-      expect(res.body.fullName).toBe('Оновлене Ім\'я');
+      expect(res.body.fullName).toBe("Оновлене Ім'я");
       expect(res.body.debt).toBe(10000);
     });
   });

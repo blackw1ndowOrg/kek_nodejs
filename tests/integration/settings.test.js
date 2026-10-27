@@ -46,7 +46,10 @@ describe('Settings API (Supertest)', () => {
       ['patch', `${BASE}/TUITION_MONTHLY`],
     ])('%s %s: лише ADMIN, решта -> 403', async (method, url) => {
       for (const role of ['MANAGER', 'TEACHER', 'PARENT']) {
-        const res = await request(app)[method](url).set('Authorization', tokenFor(role)).send({ value: 1 });
+        const res = await request(app)
+          [method](url)
+          .set('Authorization', tokenFor(role))
+          .send({ value: 1 });
         expect(res.status).toBe(StatusCodes.FORBIDDEN);
       }
     });
@@ -121,7 +124,10 @@ describe('Settings API (Supertest)', () => {
       ['без value', 'TUITION_MONTHLY', {}],
       ['зайве поле', 'TUITION_MONTHLY', { value: 100, extra: 1 }],
     ])('%s -> 400', async (_name, key, body) => {
-      const res = await request(app)[method](`${BASE}/${key}`).set('Authorization', ADMIN()).send(body);
+      const res = await request(app)
+        [method](`${BASE}/${key}`)
+        .set('Authorization', ADMIN())
+        .send(body);
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
       expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
       expect(settingsRepository.upsert).not.toHaveBeenCalled();

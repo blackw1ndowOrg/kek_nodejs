@@ -1,7 +1,4 @@
-const {
-  RoomsRepository,
-  roomsRepository,
-} = require('../../../src/modules/rooms/rooms.repository');
+const { RoomsRepository, roomsRepository } = require('../../../src/modules/rooms/rooms.repository');
 
 const ROOM_SELECT = {
   id: true,

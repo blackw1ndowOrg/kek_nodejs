@@ -67,8 +67,9 @@ describe('updateSettingSchema', () => {
   const parse = (key, value) => updateSettingSchema.safeParse({ params: { key }, body: { value } });
 
   test('відомий ключ із валідним значенням', () => {
-    expect(updateSettingSchema.parse({ params: { key: 'TUITION_MONTHLY' }, body: { value: 1600000 } }))
-      .toEqual({ params: { key: 'TUITION_MONTHLY' }, body: { value: 1600000 } });
+    expect(
+      updateSettingSchema.parse({ params: { key: 'TUITION_MONTHLY' }, body: { value: 1600000 } })
+    ).toEqual({ params: { key: 'TUITION_MONTHLY' }, body: { value: 1600000 } });
   });
 
   test('ключ обрізається від пробілів', () => {
