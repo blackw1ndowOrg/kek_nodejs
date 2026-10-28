@@ -117,9 +117,7 @@ describe('StaffRepository - Unit Tests', () => {
 
       const result = await repo.create(data);
 
-      expect(mockDb.staff.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data })
-      );
+      expect(mockDb.staff.create).toHaveBeenCalledWith(expect.objectContaining({ data }));
       expect(result.id).toBe(1);
     });
 

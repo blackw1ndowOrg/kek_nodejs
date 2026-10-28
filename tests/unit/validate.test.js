@@ -205,7 +205,7 @@ describe('validate middleware', () => {
     });
   });
 
-  describe('зв\'язка validate + errorHandler', () => {
+  describe("зв'язка validate + errorHandler", () => {
     test('помилка з validate автоматично перетворюється errorHandler у 400', async () => {
       const schema = z.object({
         email: z.string().email('Некоректний email'),
@@ -228,12 +228,9 @@ describe('validate middleware', () => {
         error: {
           code: ErrorCodes.VALIDATION_ERROR,
           message: 'Validation failed',
-          details: [
-            { path: 'email', message: 'Некоректний email' },
-          ],
+          details: [{ path: 'email', message: 'Некоректний email' }],
         },
       });
     });
   });
 });
-

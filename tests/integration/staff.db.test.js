@@ -116,9 +116,9 @@ describe('Staff Database Integration Tests (Real PostgreSQL)', () => {
       expect(inactive.some((s) => s.id === activeEducator.id)).toBe(false);
     });
 
-    runIfDb('findById: завантажує запис разом із зв\'язками Prisma', async () => {
+    runIfDb("findById: завантажує запис разом із зв'язками Prisma", async () => {
       const staff = await staffRepository.create({
-        fullName: 'Співробітник Зв\'язків',
+        fullName: "Співробітник Зв'язків",
         type: 'CLUB_TEACHER',
         isActive: true,
       });
@@ -135,23 +135,23 @@ describe('Staff Database Integration Tests (Real PostgreSQL)', () => {
 
     runIfDb('update: оновлює дані співробітника у PostgreSQL', async () => {
       const staff = await staffRepository.create({
-        fullName: 'Старе Ім\'я',
+        fullName: "Старе Ім'я",
         type: 'ASSISTANT',
         isActive: true,
       });
       createdStaffIds.push(staff.id);
 
       const updated = await staffRepository.update(staff.id, {
-        fullName: 'Нове Оновлене Ім\'я',
+        fullName: "Нове Оновлене Ім'я",
         isActive: false,
       });
 
       expect(updated.id).toBe(staff.id);
-      expect(updated.fullName).toBe('Нове Оновлене Ім\'я');
+      expect(updated.fullName).toBe("Нове Оновлене Ім'я");
       expect(updated.isActive).toBe(false);
 
       const verified = await staffRepository.findById(staff.id);
-      expect(verified.fullName).toBe('Нове Оновлене Ім\'я');
+      expect(verified.fullName).toBe("Нове Оновлене Ім'я");
       expect(verified.isActive).toBe(false);
     });
 
@@ -169,67 +169,61 @@ describe('Staff Database Integration Tests (Real PostgreSQL)', () => {
     });
   });
 
-  describe('StaffService - реальні транзакції та зв\'язані сутності', () => {
-    runIfDb(
-      'createStaff: створює Staff та User в одній транзакції PostgreSQL',
-      async () => {
-        const uniqueEmail = `real.db.teacher.${Date.now()}@kg.local`;
+  describe("StaffService - реальні транзакції та зв'язані сутності", () => {
+    runIfDb('createStaff: створює Staff та User в одній транзакції PostgreSQL', async () => {
+      const uniqueEmail = `real.db.teacher.${Date.now()}@kg.local`;
 
-        const result = await staffService.createStaff({
-          fullName: 'Транзакційний Вчитель',
-          type: 'EDUCATOR',
-          isActive: true,
-          user: {
-            email: uniqueEmail,
-            password: 'StrongPassword123!',
-          },
-        });
+      const result = await staffService.createStaff({
+        fullName: 'Транзакційний Вчитель',
+        type: 'EDUCATOR',
+        isActive: true,
+        user: {
+          email: uniqueEmail,
+          password: 'StrongPassword123!',
+        },
+      });
 
-        createdStaffIds.push(result.id);
-        if (result.userId) {
-          createdUserIds.push(result.userId);
-        }
-
-        expect(result.id).toBeDefined();
-        expect(result.userId).toBeDefined();
-
-        // Перевіряємо створеного користувача напряму в базі
-        const userInDb = await prisma.user.findUnique({
-          where: { id: result.userId },
-        });
-        expect(userInDb).toBeDefined();
-        expect(userInDb.email).toBe(uniqueEmail);
-        expect(userInDb.role).toBe('TEACHER');
+      createdStaffIds.push(result.id);
+      if (result.userId) {
+        createdUserIds.push(result.userId);
       }
-    );
 
-    runIfDb(
-      'deleteStaff: видаляє Staff та зв\'язаного User у реальній транзакції',
-      async () => {
-        const uniqueEmail = `delete.user.${Date.now()}@kg.local`;
+      expect(result.id).toBeDefined();
+      expect(result.userId).toBeDefined();
 
-        const created = await staffService.createStaff({
-          fullName: 'Співробітник з Акаунтом',
-          type: 'MANAGER',
-          isActive: true,
-          user: {
-            email: uniqueEmail,
-            password: 'Password123!',
-          },
-        });
+      // Перевіряємо створеного користувача напряму в базі
+      const userInDb = await prisma.user.findUnique({
+        where: { id: result.userId },
+      });
+      expect(userInDb).toBeDefined();
+      expect(userInDb.email).toBe(uniqueEmail);
+      expect(userInDb.role).toBe('TEACHER');
+    });
 
-        const staffId = created.id;
-        const userId = created.userId;
+    runIfDb("deleteStaff: видаляє Staff та зв'язаного User у реальній транзакції", async () => {
+      const uniqueEmail = `delete.user.${Date.now()}@kg.local`;
 
-        await staffService.deleteStaff(staffId);
+      const created = await staffService.createStaff({
+        fullName: 'Співробітник з Акаунтом',
+        type: 'MANAGER',
+        isActive: true,
+        user: {
+          email: uniqueEmail,
+          password: 'Password123!',
+        },
+      });
 
-        const staffCheck = await prisma.staff.findUnique({ where: { id: staffId } });
-        const userCheck = await prisma.user.findUnique({ where: { id: userId } });
+      const staffId = created.id;
+      const userId = created.userId;
 
-        expect(staffCheck).toBeNull();
-        expect(userCheck).toBeNull();
-      }
-    );
+      await staffService.deleteStaff(staffId);
+
+      const staffCheck = await prisma.staff.findUnique({ where: { id: staffId } });
+      const userCheck = await prisma.user.findUnique({ where: { id: userId } });
+
+      expect(staffCheck).toBeNull();
+      expect(userCheck).toBeNull();
+    });
 
     runIfDb(
       'createStaff: перехоплює реальний P2002 від PostgreSQL та кидає ConflictError при дублікаті email',
@@ -264,7 +258,7 @@ describe('Staff Database Integration Tests (Real PostgreSQL)', () => {
     );
 
     runIfDb(
-      'getStaffSalary: розраховує зарплату на основі реальних зв\'язків з дітьми у БД',
+      "getStaffSalary: розраховує зарплату на основі реальних зв'язків з дітьми у БД",
       async () => {
         // Вихователь ID 8 закріплений за групою "Дзвіночок" з 14 реальними дітьми (> 12)
         // Розрахунок: 14 * 200_000 + (14 - 12) * 300_000 = 2_800_000 + 600_000 = 3_400_000 копійок (34 000 грн)

@@ -159,8 +159,9 @@ describe('Staff Module - Unit Tests', () => {
 
     test('createStaff: прокидає невідому помилку далі, якщо це не P2002', async () => {
       mockDb.$transaction.mockRejectedValueOnce(new Error('DB error'));
-      await expect(service.createStaff({ fullName: 'Тест', type: 'EDUCATOR' }))
-        .rejects.toThrow('DB error');
+      await expect(service.createStaff({ fullName: 'Тест', type: 'EDUCATOR' })).rejects.toThrow(
+        'DB error'
+      );
     });
 
     test('createStaff: призначає role=MANAGER для менеджера та role=TEACHER для інших', async () => {
@@ -218,7 +219,7 @@ describe('Staff Module - Unit Tests', () => {
       await expect(service.getStaffById(999)).rejects.toThrow(NotFoundError);
     });
 
-    test('updateStaff: синхронізує User.role і повертає оновлений об\'єкт із новою роллю', async () => {
+    test("updateStaff: синхронізує User.role і повертає оновлений об'єкт із новою роллю", async () => {
       mockRepo.findById.mockResolvedValueOnce({ id: 1, type: 'EDUCATOR', userId: 10 });
       mockRepo.update.mockResolvedValueOnce({
         id: 1,
@@ -238,7 +239,11 @@ describe('Staff Module - Unit Tests', () => {
 
     test('updateStaff: синхронізує User.role при зміні type на EDUCATOR (TEACHER)', async () => {
       mockRepo.findById.mockResolvedValueOnce({ id: 1, type: 'MANAGER', userId: 10 });
-      mockRepo.update.mockResolvedValueOnce({ id: 1, type: 'EDUCATOR', user: { id: 10, role: 'MANAGER' } });
+      mockRepo.update.mockResolvedValueOnce({
+        id: 1,
+        type: 'EDUCATOR',
+        user: { id: 10, role: 'MANAGER' },
+      });
       mockDb.user.update.mockResolvedValueOnce({ id: 10, role: 'TEACHER' });
 
       const updated = await service.updateStaff(1, { type: 'EDUCATOR' });

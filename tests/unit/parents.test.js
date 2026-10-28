@@ -53,7 +53,7 @@ describe('Parents Module - Unit Tests', () => {
       }).toThrow();
     });
 
-    test('помилка при від\'ємному боргу', () => {
+    test("помилка при від'ємному боргу", () => {
       expect(() => {
         createParentSchema.parse({
           fullName: 'Іваненко Петро',
@@ -76,10 +76,10 @@ describe('Parents Module - Unit Tests', () => {
 
     test('валідація схеми оновлення', () => {
       const parsed = updateParentSchema.parse({
-        fullName: 'Нове Ім\'я',
+        fullName: "Нове Ім'я",
         debt: 20000,
       });
-      expect(parsed.fullName).toBe('Нове Ім\'я');
+      expect(parsed.fullName).toBe("Нове Ім'я");
       expect(parsed.debt).toBe(20000);
     });
 
@@ -209,7 +209,10 @@ describe('Parents Module - Unit Tests', () => {
     });
 
     test('getAllParents: повертає список батьків з репозиторію', async () => {
-      const parents = [{ id: 1, fullName: 'Мама 1' }, { id: 2, fullName: 'Тато 2' }];
+      const parents = [
+        { id: 1, fullName: 'Мама 1' },
+        { id: 2, fullName: 'Тато 2' },
+      ];
       mockRepo.findAll.mockResolvedValueOnce(parents);
 
       const result = await service.getAllParents({ search: 'Мама' });
@@ -252,9 +255,7 @@ describe('Parents Module - Unit Tests', () => {
     test('updateParent: викидає NotFoundError при оновленні неіснуючого запису', async () => {
       mockRepo.findById.mockResolvedValueOnce(null);
 
-      await expect(service.updateParent(999, { fullName: 'Нове' })).rejects.toThrow(
-        NotFoundError
-      );
+      await expect(service.updateParent(999, { fullName: 'Нове' })).rejects.toThrow(NotFoundError);
     });
 
     test('deleteParent: викидає ConflictError якщо у батьків є борг', async () => {
@@ -326,7 +327,7 @@ describe('Parents Module - Unit Tests', () => {
       expect(mockDb.user.delete).toHaveBeenCalledWith({ where: { id: 15 } });
     });
 
-    test('deleteParent: успішно видаляє якщо зв\'язана дитина неактивна', async () => {
+    test("deleteParent: успішно видаляє якщо зв'язана дитина неактивна", async () => {
       mockRepo.findById.mockResolvedValueOnce({
         id: 1,
         debt: 0,
@@ -348,7 +349,7 @@ describe('Parents Module - Unit Tests', () => {
       expect(mockRepo.delete).toHaveBeenCalledWith(1, mockDb);
     });
 
-    test('deleteParent: успішно видаляє батьків та прив\'язаного юзера при debt = 0 без дітей', async () => {
+    test("deleteParent: успішно видаляє батьків та прив'язаного юзера при debt = 0 без дітей", async () => {
       mockRepo.findById.mockResolvedValueOnce({ id: 1, debt: 0, userId: 15, children: [] });
       mockRepo.delete.mockResolvedValueOnce({ id: 1 });
       mockDb.user.delete.mockResolvedValueOnce({ id: 15 });
@@ -389,7 +390,7 @@ describe('Parents Module - Unit Tests', () => {
       };
     });
 
-    test('create: повертає 201 та створений об\'єкт', async () => {
+    test("create: повертає 201 та створений об'єкт", async () => {
       const req = { body: { fullName: 'Тест' } };
       mockService.createParent.mockResolvedValueOnce({ id: 1, ...req.body });
 
@@ -409,7 +410,7 @@ describe('Parents Module - Unit Tests', () => {
       expect(res.json).toHaveBeenCalledWith({ parents: [{ id: 1 }] });
     });
 
-    test('getById: повертає 200 та об\'єкт батьків', async () => {
+    test("getById: повертає 200 та об'єкт батьків", async () => {
       const req = { params: { id: 1 } };
       mockService.getParentById.mockResolvedValueOnce({ id: 1, fullName: 'Тест' });
 

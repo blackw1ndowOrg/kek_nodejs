@@ -105,7 +105,7 @@ describe('Parents Database Integration Tests (Real PostgreSQL)', () => {
       expect(found.some((p) => p.id === parent.id)).toBe(true);
     });
 
-    runIfDb('findById: завантажує запис разом із зв\'язками дітей та користувача', async () => {
+    runIfDb("findById: завантажує запис разом із зв'язками дітей та користувача", async () => {
       // Використовуємо батька ID 1 з seed-даних, у якого є зв'язок з дитиною
       const found = await parentsRepository.findById(1);
 
@@ -120,25 +120,25 @@ describe('Parents Database Integration Tests (Real PostgreSQL)', () => {
 
     runIfDb('update: оновлює дані батьків у PostgreSQL', async () => {
       const parent = await parentsRepository.create({
-        fullName: 'Старе Ім\'я Батька',
+        fullName: "Старе Ім'я Батька",
         phone: '+380500000000',
         debt: 0,
       });
       createdParentIds.push(parent.id);
 
       const updated = await parentsRepository.update(parent.id, {
-        fullName: 'Оновлене Ім\'я Батька',
+        fullName: "Оновлене Ім'я Батька",
         phone: '+380509999999',
         debt: 50000,
       });
 
       expect(updated.id).toBe(parent.id);
-      expect(updated.fullName).toBe('Оновлене Ім\'я Батька');
+      expect(updated.fullName).toBe("Оновлене Ім'я Батька");
       expect(updated.phone).toBe('+380509999999');
       expect(updated.debt).toBe(50000);
 
       const verified = await parentsRepository.findById(parent.id);
-      expect(verified.fullName).toBe('Оновлене Ім\'я Батька');
+      expect(verified.fullName).toBe("Оновлене Ім'я Батька");
       expect(verified.debt).toBe(50000);
     });
 
@@ -231,7 +231,7 @@ describe('Parents Database Integration Tests (Real PostgreSQL)', () => {
     );
 
     runIfDb(
-      'deleteParent: успішно видаляє вільного батька та зв\'язаного User у реальній транзакції',
+      "deleteParent: успішно видаляє вільного батька та зв'язаного User у реальній транзакції",
       async () => {
         const uniqueEmail = `delete.parent.${Date.now()}@kg.local`;
 
