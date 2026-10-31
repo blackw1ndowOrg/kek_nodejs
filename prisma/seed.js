@@ -1,6 +1,7 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
+const { generateSchedule } = require('../src/domain/schedule');
 
 const prisma = new PrismaClient();
 
@@ -862,81 +863,25 @@ async function seedParentChild() {
  * 1.5 год вільного часу
  * 3 заняття на день, рівномірний розподіл між 5 гуртками по 3 на тиждень
  */
+/**
+ * Сутність: ScheduleSlot
+ * Розклад для ВСІХ груп генерує domain-функція generateSchedule (той самий алгоритм, що й
+ * POST /api/v1/schedule/generate): 08:30–16:30, 3 заняття по 45 хв на день, кожен гурток
+ * у кожної групи рівно 3 рази на тиждень, жодних накладок кабінетів між групами.
+ * Повторний запуск seed повністю перебудовує розклад (ручні правки замінюються).
+ */
 async function seedSchedule() {
-  const group = await prisma.group.findFirst({
-    where: { name: 'Дзвіночок' },
-  });
-  if (!group) return;
+  const [groups, clubs] = await Promise.all([
+    prisma.group.findMany({ select: { id: true }, orderBy: { id: 'asc' } }),
+    prisma.club.findMany({ select: { id: true }, orderBy: { id: 'asc' } }),
+  ]);
 
-  const clubs = await prisma.club.findMany();
-  const clubMap = new Map(clubs.map((c) => [c.name, c.id]));
-
-  // Розподіл занять на 5 днів тижня (Пн-Пт)
-  // Кожен гурток має рівно 3 заняття на тиждень, жоден предмет не повторюється двічі в один день
-  const dailyLessons = {
-    1: ['Музика', 'Англійська', 'Шахи'],
-    2: ['Малювання', 'Танці', 'Музика'],
-    3: ['Англійська', 'Шахи', 'Малювання'],
-    4: ['Танці', 'Музика', 'Англійська'],
-    5: ['Шахи', 'Малювання', 'Танці'],
-  };
-
-  let totalSlots = 0;
-  for (let day = 1; day <= 5; day += 1) {
-    const lessons = dailyLessons[day];
-
-    const slots = [
-      // 08:30 - 09:00: Сніданок (30 хв)
-      { start: 510, end: 540, activity: 'Сніданок', clubId: null },
-      // 09:00 - 09:45: Заняття №1
-      { start: 540, end: 585, activity: `Заняття: ${lessons[0]}`, clubId: clubMap.get(lessons[0]) || null },
-      // 09:45 - 10:15: Вільний час (30 хв)
-      { start: 585, end: 615, activity: 'Вільний час', clubId: null },
-      // 10:15 - 11:00: Заняття №2
-      { start: 615, end: 660, activity: `Заняття: ${lessons[1]}`, clubId: clubMap.get(lessons[1]) || null },
-      // 11:00 - 12:00: Прогулянка на свіжому повітрі (60 хв)
-      { start: 660, end: 720, activity: 'Прогулянка на свіжому повітрі', clubId: null },
-      // 12:00 - 12:30: Обід (30 хв)
-      { start: 720, end: 750, activity: 'Обід', clubId: null },
-      // 12:30 - 13:30: Денний сон (60 хв)
-      { start: 750, end: 810, activity: 'Денний сон', clubId: null },
-      // 13:30 - 14:15: Заняття №3
-      { start: 810, end: 855, activity: `Заняття: ${lessons[2]}`, clubId: clubMap.get(lessons[2]) || null },
-      // 14:15 - 14:45: Вільний час (30 хв)
-      { start: 855, end: 885, activity: 'Вільний час', clubId: null },
-      // 14:45 - 15:15: Підвечірок (30 хв)
-      { start: 885, end: 915, activity: 'Підвечірок', clubId: null },
-      // 15:15 - 16:30: Вільний час / Ігри (75 хв)
-      { start: 915, end: 990, activity: 'Вільний час / Ігри', clubId: null },
-    ];
-
-    for (const slot of slots) {
-      await prisma.scheduleSlot.upsert({
-        where: {
-          groupId_dayOfWeek_startMinute: {
-            groupId: group.id,
-            dayOfWeek: day,
-            startMinute: slot.start,
-          },
-        },
-        update: {
-          endMinute: slot.end,
-          activity: slot.activity,
-          clubId: slot.clubId,
-        },
-        create: {
-          groupId: group.id,
-          dayOfWeek: day,
-          startMinute: slot.start,
-          endMinute: slot.end,
-          activity: slot.activity,
-          clubId: slot.clubId,
-        },
-      });
-      totalSlots += 1;
-    }
-  }
-  console.log(`[10/10] ScheduleSlots: ${totalSlots} (full Mon-Fri schedule)`);
+  const slots = generateSchedule({ groups, clubs });
+  await prisma.$transaction([
+    prisma.scheduleSlot.deleteMany(),
+    prisma.scheduleSlot.createMany({ data: slots }),
+  ]);
+  console.log(`[10/10] ScheduleSlots: ${slots.length} (${groups.length} груп × Пн–Пт)`);
 }
 
 // ==========================================
