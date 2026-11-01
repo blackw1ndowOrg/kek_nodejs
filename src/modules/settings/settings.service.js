@@ -83,7 +83,7 @@ class SettingsService {
 
   /**
    * Retrieves a setting by key.
-   * 
+   *
    * @param {string} key e.g. 'TUITION_MONTHLY'
    * @returns {number|number[]|*}
    */
@@ -104,7 +104,7 @@ class SettingsService {
   /**
    * Updates a value in the DB and immediately updates the cache.
    * New keys cannot be created — only existing ones can be updated.
-   * 
+   *
    * @param {string} key
    * @param {*} value
    * @returns {Promise<{ key: string, value: * }>}

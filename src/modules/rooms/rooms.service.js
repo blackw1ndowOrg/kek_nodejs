@@ -15,8 +15,7 @@ function translateDbError(error) {
     return new ConflictError('Кімната використовується і не може бути видалена');
   if (error?.code === VALUE_OUT_OF_RANGE)
     return new BadRequestError('Значення виходить за межі допустимого діапазону');
-  if (error?.code === RECORD_NOT_FOUND)
-    return new NotFoundError('Кімнату з таким ID не знайдено');
+  if (error?.code === RECORD_NOT_FOUND) return new NotFoundError('Кімнату з таким ID не знайдено');
   return error;
 }
 
