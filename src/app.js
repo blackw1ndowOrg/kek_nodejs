@@ -9,6 +9,7 @@ const childrenRoutes = require('./modules/children/children.routes');
 const parentsRoutes = require('./modules/parents/parents.routes');
 const staffRoutes = require('./modules/staff/staff.routes');
 const groupsRoutes = require('./modules/groups/groups.routes');
+const analyticsRoutes = require('./modules/analytics/analytics.routes');
 
 function createApp() {
   const app = express();
@@ -26,6 +27,7 @@ function createApp() {
   app.use('/api/v1/parents', parentsRoutes);
   app.use('/api/v1/staff', staffRoutes);
   app.use('/api/v1/groups', groupsRoutes);
+  app.use('/api/v1/analytics', analyticsRoutes);
 
   app.use(notFound);
   app.use(errorHandler);
@@ -33,4 +35,3 @@ function createApp() {
 }
 
 module.exports = { createApp };
-
