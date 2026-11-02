@@ -50,9 +50,7 @@ describe('шаблон дня садка', () => {
   describe('слоти після обіду (14:00–17:45)', () => {
     test('5 слотів по 30 хв: 14:00, 14:45, 15:30, 16:15, 17:00', () => {
       expect(AFTERNOON_SLOTS.map((s) => s.startMinute)).toEqual([840, 885, 930, 975, 1020]);
-      expect(AFTERNOON_SLOTS.every((s) => s.endMinute - s.startMinute === SLOT_MINUTES)).toBe(
-        true
-      );
+      expect(AFTERNOON_SLOTS.every((s) => s.endMinute - s.startMinute === SLOT_MINUTES)).toBe(true);
     });
 
     test('між слотами перерва 15 хв, останній слот закінчується о 17:30', () => {
@@ -79,7 +77,8 @@ describe('шаблон дня садка', () => {
       { start: 540, end: 720 },
       { start: 840, end: 1065 },
     ]);
-    const inside = (slot, window) => slot.startMinute >= window.start && slot.endMinute <= window.end;
+    const inside = (slot, window) =>
+      slot.startMinute >= window.start && slot.endMinute <= window.end;
     expect(MORNING_SLOTS.every((s) => inside(s, LESSON_WINDOWS[0]))).toBe(true);
     expect(AFTERNOON_SLOTS.every((s) => inside(s, LESSON_WINDOWS[1]))).toBe(true);
   });

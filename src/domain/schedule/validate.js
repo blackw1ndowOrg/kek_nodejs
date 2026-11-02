@@ -13,9 +13,7 @@ const overlaps = (a, b) => a.startMinute < b.endMinute && b.startMinute < a.endM
 const always = () => true;
 
 const inLessonWindow = (slot) =>
-  LESSON_WINDOWS.some(
-    (window) => slot.startMinute >= window.start && slot.endMinute <= window.end
-  );
+  LESSON_WINDOWS.some((window) => slot.startMinute >= window.start && slot.endMinute <= window.end);
 
 function addToBucket(buckets, key, slot) {
   if (!buckets.has(key)) buckets.set(key, []);

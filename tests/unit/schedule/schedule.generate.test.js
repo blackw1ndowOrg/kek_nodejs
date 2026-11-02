@@ -129,9 +129,11 @@ describe('generateSchedule', () => {
   describe('рівномірність за тиждень', () => {
     const weeklyCounts = (slots, groupId, clubs) => {
       const counts = Object.fromEntries(clubs.map((c) => [c.id, 0]));
-      slots.filter((s) => s.groupId === groupId && s.clubId !== null).forEach((s) => {
-        counts[s.clubId] += 1;
-      });
+      slots
+        .filter((s) => s.groupId === groupId && s.clubId !== null)
+        .forEach((s) => {
+          counts[s.clubId] += 1;
+        });
       return Object.values(counts);
     };
 

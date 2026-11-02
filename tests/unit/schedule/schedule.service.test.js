@@ -98,7 +98,9 @@ describe('ScheduleService', () => {
 
     test('15 груп і 5 гуртків вміщаються без накладок', async () => {
       const { repository, service } = createService();
-      repository.findGroups.mockResolvedValueOnce(Array.from({ length: 15 }, (_, i) => ({ id: i + 1 })));
+      repository.findGroups.mockResolvedValueOnce(
+        Array.from({ length: 15 }, (_, i) => ({ id: i + 1 }))
+      );
       await expect(service.generate()).resolves.toEqual({ groups: 15, clubs: 5, slots: 1050 });
       const [slots] = repository.replaceAll.mock.calls[0];
       expect(validateSchedule(slots)).toEqual([]);
@@ -106,7 +108,9 @@ describe('ScheduleService', () => {
 
     test('груп більше, ніж можна розвести за часом -> AppError 422, розклад не чіпається', async () => {
       const { repository, service } = createService();
-      repository.findGroups.mockResolvedValueOnce(Array.from({ length: 16 }, (_, i) => ({ id: i + 1 })));
+      repository.findGroups.mockResolvedValueOnce(
+        Array.from({ length: 16 }, (_, i) => ({ id: i + 1 }))
+      );
       const promise = service.generate();
       await expect(promise).rejects.toBeInstanceOf(AppError);
       await expect(promise).rejects.toMatchObject({ statusCode: 422 });

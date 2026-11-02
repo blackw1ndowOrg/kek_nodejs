@@ -80,7 +80,13 @@ describe('validateSchedule', () => {
       expect(
         validateSchedule([
           slot({ id: 1, activity: ACTIVITY.MEAL, clubId: null, startMinute: 510, endMinute: 540 }),
-          slot({ id: 2, activity: ACTIVITY.MEAL, clubId: null, startMinute: 1050, endMinute: 1080 }),
+          slot({
+            id: 2,
+            activity: ACTIVITY.MEAL,
+            clubId: null,
+            startMinute: 1050,
+            endMinute: 1080,
+          }),
         ])
       ).toEqual([]);
     });
@@ -107,7 +113,12 @@ describe('validateSchedule', () => {
     });
 
     test('слот, що не є заняттям, або без активності, періодами не обмежується', () => {
-      const nap = slot({ activity: ACTIVITY.SLEEP, clubId: null, startMinute: 780, endMinute: 840 });
+      const nap = slot({
+        activity: ACTIVITY.SLEEP,
+        clubId: null,
+        startMinute: 780,
+        endMinute: 840,
+      });
       const noActivity = { groupId: 1, dayOfWeek: 1, startMinute: 720, endMinute: 750 };
       expect(validateSchedule([nap, noActivity])).toEqual([]);
     });
@@ -226,11 +237,7 @@ describe('validateSchedule', () => {
         slot({ id: 2, startMinute: 555, endMinute: 585 }),
       ]);
       expect(types.sort()).toEqual(
-        [
-          CONFLICT.GROUP_OVERLAP,
-          CONFLICT.CLUB_DOUBLE_BOOKED,
-          CONFLICT.CLUB_REPEATED_IN_DAY,
-        ].sort()
+        [CONFLICT.GROUP_OVERLAP, CONFLICT.CLUB_DOUBLE_BOOKED, CONFLICT.CLUB_REPEATED_IN_DAY].sort()
       );
     });
   });
