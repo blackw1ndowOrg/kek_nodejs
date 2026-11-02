@@ -313,6 +313,382 @@ components:
         hasDeputyRelatives:
           type: boolean
           example: false
+    Parent:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        fullName:
+          type: string
+          example: Петренко Василь Іванович
+        phone:
+          type: string
+          example: '+380501234567'
+        debt:
+          type: integer
+          description: Борг у копійках
+          example: 0
+        userId:
+          type: integer
+          nullable: true
+          example: 16
+    ParentCreate:
+      type: object
+      required:
+        - fullName
+        - phone
+      properties:
+        fullName:
+          type: string
+          example: Петренко Василь Іванович
+        phone:
+          type: string
+          example: '+380501234567'
+        debt:
+          type: integer
+          default: 0
+          example: 0
+        user:
+          type: object
+          required:
+            - email
+            - password
+          properties:
+            email:
+              type: string
+              format: email
+              example: petro@example.com
+            password:
+              type: string
+              format: password
+              example: Password123!
+    ParentUpdate:
+      type: object
+      properties:
+        fullName:
+          type: string
+          example: Петренко Василь Іванович
+        phone:
+          type: string
+          example: '+380509998877'
+        debt:
+          type: integer
+          example: 150000
+    Staff:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 7
+        fullName:
+          type: string
+          example: Олена Ковальчук
+        type:
+          type: string
+          enum: [EDUCATOR, ASSISTANT, CLUB_TEACHER, MANAGER]
+          example: EDUCATOR
+        isActive:
+          type: boolean
+          example: true
+        userId:
+          type: integer
+          nullable: true
+          example: 8
+    StaffCreate:
+      type: object
+      required:
+        - fullName
+        - type
+      properties:
+        fullName:
+          type: string
+          example: Олена Ковальчук
+        type:
+          type: string
+          enum: [EDUCATOR, ASSISTANT, CLUB_TEACHER, MANAGER]
+          example: EDUCATOR
+        isActive:
+          type: boolean
+          default: true
+          example: true
+        user:
+          type: object
+          required:
+            - email
+            - password
+          properties:
+            email:
+              type: string
+              format: email
+              example: olena@kindergarten.local
+            password:
+              type: string
+              format: password
+              example: Password123!
+    StaffUpdate:
+      type: object
+      properties:
+        fullName:
+          type: string
+          example: Олена Ковальчук
+        type:
+          type: string
+          enum: [EDUCATOR, ASSISTANT, CLUB_TEACHER, MANAGER]
+          example: EDUCATOR
+        isActive:
+          type: boolean
+          example: true
+    StaffSalaryResponse:
+      type: object
+      properties:
+        staffId:
+          type: integer
+          example: 7
+        fullName:
+          type: string
+          example: Олена Ковальчук
+        type:
+          type: string
+          example: EDUCATOR
+        salary:
+          type: integer
+          description: Зарплата у копійках
+          example: 3400000
+        isActive:
+          type: boolean
+          example: true
+        details:
+          type: object
+          properties:
+            childrenCount:
+              type: integer
+              nullable: true
+              example: 14
+            groupName:
+              type: string
+              nullable: true
+              example: Дзвіночок
+    BillingCalculationResponse:
+      type: object
+      properties:
+        childId:
+          type: integer
+          example: 1
+        fullName:
+          type: string
+          example: Петренко Максим Васильович
+        groupAge:
+          type: integer
+          example: 3
+        discountPercent:
+          type: integer
+          example: 10
+        paymentPlan:
+          type: string
+          enum: [MONTHLY, YEARLY]
+          example: MONTHLY
+        currency:
+          type: string
+          example: UAH
+        monthly:
+          type: object
+          properties:
+            tuition:
+              type: integer
+              example: 1350000
+            meals:
+              type: integer
+              example: 800000
+            total:
+              type: integer
+              example: 2150000
+        yearly:
+          type: object
+          properties:
+            total:
+              type: integer
+              example: 22704000
+        amountDue:
+          type: integer
+          example: 2150000
+        paidUntil:
+          type: string
+          format: date
+          nullable: true
+          example: '2026-11-30'
+        isPaid:
+          type: boolean
+          example: true
+    PaymentRequest:
+      type: object
+      properties:
+        plan:
+          type: string
+          enum: [MONTHLY, YEARLY]
+          example: MONTHLY
+    PaymentResponse:
+      type: object
+      properties:
+        childId:
+          type: integer
+          example: 1
+        plan:
+          type: string
+          example: MONTHLY
+        amount:
+          type: integer
+          example: 2150000
+        currency:
+          type: string
+          example: UAH
+        paidUntil:
+          type: string
+          format: date
+          example: '2026-12-30'
+    Club:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Малювання
+        roomId:
+          type: integer
+          example: 15
+        teacherId:
+          type: integer
+          example: 11
+    ClubCreate:
+      type: object
+      required:
+        - name
+        - roomId
+        - teacherId
+      properties:
+        name:
+          type: string
+          example: Малювання
+        roomId:
+          type: integer
+          example: 15
+        teacherId:
+          type: integer
+          example: 11
+    ClubUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Акварельне малювання
+        roomId:
+          type: integer
+          example: 16
+        teacherId:
+          type: integer
+          example: 12
+    ScheduleSlot:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        groupId:
+          type: integer
+          example: 1
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: День тижня (1 = понеділок, 5 = п'ятниця)
+          example: 1
+        startMinute:
+          type: integer
+          description: Хвилина початку від початку доби (наприклад, 540 = 09:00)
+          example: 540
+        endMinute:
+          type: integer
+          description: Хвилина завершення від початку доби (наприклад, 600 = 10:00)
+          example: 600
+        clubId:
+          type: integer
+          nullable: true
+          example: 1
+    UpdateSlotRequest:
+      type: object
+      properties:
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 2
+        startMinute:
+          type: integer
+          example: 570
+        endMinute:
+          type: integer
+          example: 630
+        clubId:
+          type: integer
+          example: 2
+    GroupProfitResponse:
+      type: object
+      properties:
+        groupId:
+          type: integer
+          example: 1
+        groupName:
+          type: string
+          example: Сонечко
+        age:
+          type: integer
+          example: 3
+        childrenCount:
+          type: integer
+          example: 15
+        totalIncome:
+          type: number
+          description: Загальний дохід у гривнях
+          example: 350000.0
+        profit:
+          type: number
+          description: Чистий прибуток у гривнях
+          example: 120000.0
+    TotalProfitResponse:
+      type: object
+      properties:
+        totalIncome:
+          type: number
+          example: 1200000.0
+        totalExpenses:
+          type: number
+          example: 850000.0
+        netProfit:
+          type: number
+          example: 350000.0
+    ForecastRequest:
+      type: object
+      properties:
+        targetChildrenCount:
+          type: integer
+          example: 100
+        attendanceRate:
+          type: number
+          example: 0.8
+        age2:
+          type: integer
+          example: 20
+        age3:
+          type: integer
+          example: 25
+        age4:
+          type: integer
+          example: 30
+        age5:
+          type: integer
+          example: 25
 security:
   - bearerAuth: []
 paths:
@@ -1191,4 +1567,274 @@ paths:
         '404':
           description: Дитину не знайдено
         '409':
-          description: Конфлікт статусу оплати (паралельний запит)
+          description: Конфлікт статусу оплати (паралельний запит)\n
+  # --- CLUBS MODULE ---
+  /api/v1/clubs:
+    get:
+      summary: Отримання списку гуртків (ADMIN, MANAGER, TEACHER)
+      tags:
+        - Clubs
+      responses:
+        '200':
+          description: Список гуртків
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Club'
+    post:
+      summary: Створення нового гуртка (тільки ADMIN)
+      tags:
+        - Clubs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClubCreate'
+      responses:
+        '201':
+          description: Гурток створено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Club'
+        '400':
+          description: Помилка валідації
+        '403':
+          description: Недостатньо прав
+        '409':
+          description: Кімната вже зайнята або викладач не відповідає посаді CLUB_TEACHER
+
+  /api/v1/clubs/{id}:
+    get:
+      summary: Отримання інформації про гурток за ID (ADMIN, MANAGER, TEACHER)
+      tags:
+        - Clubs
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Деталі гуртка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Club'
+        '404':
+          description: Гурток не знайдено
+    patch:
+      summary: Оновлення гуртка (тільки ADMIN)
+      tags:
+        - Clubs
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClubUpdate'
+      responses:
+        '200':
+          description: Дані гуртка оновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Club'
+        '404':
+          description: Гурток не знайдено
+        '409':
+          description: Конфлікт призначення кімнати або викладача
+    delete:
+      summary: Видалення гуртка (тільки ADMIN)
+      tags:
+        - Clubs
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Гурток успішно видалено
+        '404':
+          description: Гурток не знайдено
+
+  # --- SCHEDULE MODULE ---
+  /api/v1/schedule/generate:
+    post:
+      summary: Автоматична генерація розкладу занять на тиждень (тільки ADMIN)
+      tags:
+        - Schedule
+      responses:
+        '201':
+          description: Розклад успішно згенеровано
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduleSlot'
+        '403':
+          description: Недостатньо прав
+        '409':
+          description: Конфлікт при генерації (нестача кімнат або викладачів)
+
+  /api/v1/schedule/my:
+    get:
+      summary: Отримання персонального розкладу для поточного викладача (тільки TEACHER)
+      tags:
+        - Schedule
+      responses:
+        '200':
+          description: Розклад занять викладача
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduleSlot'
+        '403':
+          description: Доступно тільки для ролі TEACHER
+
+  /api/v1/schedule/groups/{groupId}:
+    get:
+      summary: Отримання тижневого розкладу конкретної групи (ADMIN, MANAGER, TEACHER, PARENT)
+      tags:
+        - Schedule
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Слоти розкладу групи
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ScheduleSlot'
+        '404':
+          description: Групу не знайдено
+    delete:
+      summary: Очищення розкладу групи (тільки ADMIN)
+      tags:
+        - Schedule
+      parameters:
+        - in: path
+          name: groupId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Розклад групи успішно очищено
+        '404':
+          description: Групу не знайдено
+
+  /api/v1/schedule/slots/{id}:
+    patch:
+      summary: Ручне редагування окремого слота розкладу (тільки ADMIN)
+      tags:
+        - Schedule
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSlotRequest'
+      responses:
+        '200':
+          description: Слот розкладу оновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleSlot'
+        '400':
+          description: Помилка валідації (наприклад, початок пізніше за кінець)
+        '404':
+          description: Слот не знайдено
+        '409':
+          description: Часовий конфлікт або кімната/викладач зайняті
+
+  # --- ANALYTICS MODULE ---
+  /api/v1/analytics/groups/{id}/profit:
+    get:
+      summary: Розрахунок прибутку та фінансового розрізу окремої групи (ADMIN, MANAGER)
+      tags:
+        - Analytics
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: attendanceRate
+          required: false
+          schema:
+            type: number
+          description: Коефіцієнт відвідуваності (від 0 до 1, за замовчуванням 0.8)
+      responses:
+        '200':
+          description: Фінансовий звіт по групі
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupProfitResponse'
+        '404':
+          description: Групу не знайдено
+
+  /api/v1/analytics/profit:
+    get:
+      summary: Загальний фінансовий звіт та чистий прибуток садка (ADMIN, MANAGER)
+      tags:
+        - Analytics
+      parameters:
+        - in: query
+          name: attendanceRate
+          required: false
+          schema:
+            type: number
+          description: Коефіцієнт відвідуваності
+      responses:
+        '200':
+          description: Загальний баланс доходів, витрат та прибутку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TotalProfitResponse'
+
+  /api/v1/analytics/forecast:
+    post:
+      summary: Оптимізація місткості садка та прогнозування максимального прибутку (ADMIN, MANAGER)
+      tags:
+        - Analytics
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForecastRequest'
+      responses:
+        '200':
+          description: Оптимальний план формування груп та прогноз доходу
