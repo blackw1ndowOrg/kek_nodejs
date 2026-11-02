@@ -1,4 +1,7 @@
 const express = require('express');
+const path = require('path');
+const YAML = require('yamljs');
+const swaggerUi = require('swagger-ui-express');
 const { notFound } = require('./middleware/notFound');
 const { errorHandler } = require('./middleware/errorHandler');
 const authRoutes = require('./modules/auth/auth.routes');
@@ -12,6 +15,8 @@ const groupsRoutes = require('./modules/groups/groups.routes');
 const clubsRoutes = require('./modules/clubs/clubs.routes');
 const scheduleRoutes = require('./modules/schedule/schedule.routes');
 
+const swaggerDocument = YAML.load(path.join(__dirname, '../docs/openapi.yaml'));
+
 function createApp() {
   const app = express();
   app.use(express.json());
@@ -19,6 +24,8 @@ function createApp() {
   app.get('/api/v1/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
+
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/settings', settingsRoutes);

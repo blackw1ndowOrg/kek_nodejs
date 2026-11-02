@@ -1,0 +1,38 @@
+openapi: 3.0.3
+info:
+  title: Kindergarten Management System API
+  description: Інтерактивна документація бекенду дитячого садка (KEK Node.js team)
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+    description: Локальний сервер розробки
+tags:
+  - name: Health
+    description: Перевірка працездатності сервера
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Введіть JWT токен авторизації'
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/health:
+    get:
+      summary: Перевірка працездатності сервера
+      tags:
+        - Health
+      security: []
+      responses:
+        '200':
+          description: Сервер працює коректно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
