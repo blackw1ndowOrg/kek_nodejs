@@ -3,12 +3,11 @@ const { Role } = require('@prisma/client');
 const { auth } = require('../../middleware/auth');
 const { authorize } = require('../../middleware/authorize');
 const { validate } = require('../../middleware/validate');
-const { groupProfitSchema } = require('./analytics.schema');
+const { groupProfitSchema, forecastSchema } = require('./analytics.schema');
 const { analyticsController } = require('./analytics.controller');
 
 const router = Router();
 
-// Лише адміністратор та менеджер мають доступ до фінансової аналітики садка
 const STAFF = [Role.ADMIN, Role.MANAGER];
 
 router.use(auth);
@@ -20,11 +19,13 @@ router.get(
   analyticsController.getGroupProfit
 );
 
-router.get(
-  '/profit',
+router.get('/profit', authorize(...STAFF), analyticsController.getTotalProfit);
+
+router.post(
+  '/forecast',
   authorize(...STAFF),
-  analyticsController.getTotalProfit
+  validate(forecastSchema),
+  analyticsController.getForecast
 );
 
 module.exports = router;
-

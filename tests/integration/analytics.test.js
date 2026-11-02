@@ -33,7 +33,9 @@ describe('Analytics API (Supertest)', () => {
 
   beforeEach(() => {
     jest.spyOn(analyticsRepository, 'findGroupById').mockResolvedValue(MOCK_GROUP);
-    jest.spyOn(analyticsRepository, 'findAllActiveChildren').mockResolvedValue(MOCK_ACTIVE_CHILDREN);
+    jest
+      .spyOn(analyticsRepository, 'findAllActiveChildren')
+      .mockResolvedValue(MOCK_ACTIVE_CHILDREN);
     jest.spyOn(analyticsRepository, 'findAllGroupsWithActiveChildren').mockResolvedValue([
       {
         id: 2,
@@ -57,6 +59,9 @@ describe('Analytics API (Supertest)', () => {
 
       const res2 = await request(app).get(`${BASE}/profit`);
       expect(res2.status).toBe(StatusCodes.UNAUTHORIZED);
+
+      const res3 = await request(app).post(`${BASE}/forecast`).send({ targetChildrenCount: 150 });
+      expect(res3.status).toBe(StatusCodes.UNAUTHORIZED);
     });
 
     test.each(['PARENT', 'TEACHER'])(
@@ -71,23 +76,32 @@ describe('Analytics API (Supertest)', () => {
           .get(`${BASE}/profit`)
           .set('Authorization', tokenFor(role));
         expect(resTotal.status).toBe(StatusCodes.FORBIDDEN);
+
+        const resForecast = await request(app)
+          .post(`${BASE}/forecast`)
+          .set('Authorization', tokenFor(role))
+          .send({ targetChildrenCount: 150 });
+        expect(resForecast.status).toBe(StatusCodes.FORBIDDEN);
       }
     );
 
-    test.each(['ADMIN', 'MANAGER'])(
-      '%s має повний доступ до аналітики -> 200 OK',
-      async (role) => {
-        const resGroup = await request(app)
-          .get(`${BASE}/groups/2/profit`)
-          .set('Authorization', tokenFor(role));
-        expect(resGroup.status).toBe(StatusCodes.OK);
+    test.each(['ADMIN', 'MANAGER'])('%s має повний доступ до аналітики -> 200 OK', async (role) => {
+      const resGroup = await request(app)
+        .get(`${BASE}/groups/2/profit`)
+        .set('Authorization', tokenFor(role));
+      expect(resGroup.status).toBe(StatusCodes.OK);
 
-        const resTotal = await request(app)
-          .get(`${BASE}/profit`)
-          .set('Authorization', tokenFor(role));
-        expect(resTotal.status).toBe(StatusCodes.OK);
-      }
-    );
+      const resTotal = await request(app)
+        .get(`${BASE}/profit`)
+        .set('Authorization', tokenFor(role));
+      expect(resTotal.status).toBe(StatusCodes.OK);
+
+      const resForecast = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor(role))
+        .send({ targetChildrenCount: 150 });
+      expect(resForecast.status).toBe(StatusCodes.OK);
+    });
   });
 
   describe('GET /api/v1/analytics/groups/:id/profit', () => {
@@ -150,9 +164,7 @@ describe('Analytics API (Supertest)', () => {
 
   describe('GET /api/v1/analytics/profit', () => {
     test('успішний розрахунок загального профіту садка: 200 OK з розбивкою статей', async () => {
-      const res = await request(app)
-        .get(`${BASE}/profit`)
-        .set('Authorization', tokenFor('ADMIN'));
+      const res = await request(app).get(`${BASE}/profit`).set('Authorization', tokenFor('ADMIN'));
 
       expect(res.status).toBe(StatusCodes.OK);
       expect(res.body.activeChildrenCount).toBe(2);
@@ -185,6 +197,137 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.profit.uah).toBe(-1275500);
       expect(res.body.profit.kopiykas).toBe(-127550000);
       expect(res.body.netProfit.uah).toBe(-1275500);
+    });
+  });
+
+  describe('POST /api/v1/analytics/forecast', () => {
+    test('успішне прогнозування для targetChildrenCount = 150: 200 OK з 3 секціями', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 150 });
+
+      expect(res.status).toBe(StatusCodes.OK);
+
+      // Секція 1: recommended (Абсолютний фінансовий оптимум)
+      expect(res.body.recommended).toBeDefined();
+      expect(res.body.recommended.totalAdmitted).toBe(150);
+      expect(res.body.recommended.groupsCount).toBeGreaterThanOrEqual(8);
+      expect(res.body.recommended.roomsOccupied).toBe(
+        res.body.recommended.groupRoomsOccupied + res.body.recommended.clubRoomsOccupied
+      );
+      expect(res.body.recommended.clubTeachersCount).toBe(5);
+      expect(res.body.recommended.netProfit.uah).toBeDefined();
+      expect(res.body.recommended.netProfit.kopiykas).toBeDefined();
+      expect(res.body.recommended.summary).toContain('Відкрити');
+
+      // Секція 2: strategies (MAX_PROFIT, COMFORT_QUALITY, MINIMAL_INFRASTRUCTURE)
+      expect(res.body.strategies).toBeDefined();
+      expect(res.body.strategies.maxProfit.strategyCode).toBe('MAX_PROFIT');
+      expect(res.body.strategies.comfortQuality.strategyCode).toBe('COMFORT_QUALITY');
+      expect(res.body.strategies.minimalInfrastructure.strategyCode).toBe('MINIMAL_INFRASTRUCTURE');
+      expect(res.body.strategies.minimalInfrastructure.groupsCount).toBe(8);
+      expect(res.body.strategies.minimalInfrastructure.totalAdmitted).toBe(150);
+
+      // Секція 3: marginalEconomics (marginalChild, clubTeachersStatus, expansionAnalysis)
+      expect(res.body.marginalEconomics).toBeDefined();
+      expect(res.body.marginalEconomics.marginalChild).toBeDefined();
+      expect(res.body.marginalEconomics.marginalChild.childNumber).toBe(151);
+      expect(res.body.marginalEconomics.marginalChild.insight).toContain('приносить');
+
+      expect(res.body.marginalEconomics.clubTeachersStatus).toBeDefined();
+      expect(res.body.marginalEconomics.clubTeachersStatus.insight).toContain(
+        'Поточний штат гуртків заповнений на'
+      );
+
+      expect(res.body.marginalEconomics.expansionAnalysis).toBeDefined();
+      expect(res.body.marginalEconomics.expansionAnalysis.costJump.uah).toBeGreaterThan(0);
+      expect(res.body.marginalEconomics.expansionAnalysis.insight).toContain(
+        'Відкриття наступної групи вимагатиме стрибка витрат на'
+      );
+    });
+
+    test('успішне прогнозування з динамічним віковим попитом: 200 OK', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('MANAGER'))
+        .send({ 2: 25, 3: 45, 4: 35, 5: 20 });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.recommended).toBeDefined();
+      expect(res.body.strategies.maxProfit).toBeDefined();
+      expect(res.body.marginalEconomics).toBeDefined();
+    });
+
+    test.each([0, 300])('граничні значення: targetChildrenCount = %d -> 200 OK', async (count) => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: count });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.requestedDemand.totalChildren).toBe(count);
+    });
+
+    test('спроба передати 301 дитину (перевищення ліміту місткості) -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 301 });
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    test('від’ємна кількість дітей -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: -1 });
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    test('нечислове значення targetChildrenCount -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 'invalid' });
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    test('дробове значення targetChildrenCount -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 15.5 });
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    test('порожній запит {} успішно повертає нульовий прогноз -> 200 OK', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({});
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.requestedDemand.totalChildren).toBe(0);
+      expect(res.body.recommended.groupsCount).toBe(0);
+    });
+
+    test('запит з кастомними опціями attendanceRate та threshold -> 200 OK', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('MANAGER'))
+        .send({ targetChildrenCount: 50, attendanceRate: 0.9, threshold: 10 });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.recommended.totalAdmitted).toBe(50);
     });
   });
 });

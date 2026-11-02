@@ -2,6 +2,8 @@ const {
   AnalyticsService,
   analyticsService,
   toMoney,
+  formatVariantFinancials,
+  formatOptimalForecastMoney,
   DEFAULT_CLUB_TEACHERS_COUNT,
   DEFAULT_MANAGERS_COUNT,
   DEFAULT_TOTAL_ROOMS_COUNT,
@@ -25,6 +27,7 @@ describe('AnalyticsService', () => {
     MANAGER_SALARY: 8000000,
     ROOM_MONTHLY_COST: 5000000,
     DEFAULT_ROOMS_COUNT: 20,
+    MAX_CHILDREN_IN_GROUP: 20,
   };
 
   beforeEach(() => {
@@ -122,9 +125,21 @@ describe('AnalyticsService', () => {
       // 2 дітей з пільгою 20%: 2 * 12 000 = 24 000 грн (2 400 000 коп)
       // Всього дохід: 214 500 грн (21 450 000 коп)
       const children = [
-        ...Array.from({ length: 10 }, (_, i) => ({ id: i + 1, fullName: `Дитина ${i + 1}`, discountPercent: 0 })),
-        ...Array.from({ length: 3 }, (_, i) => ({ id: i + 11, fullName: `Дитина ${i + 11}`, discountPercent: 10 })),
-        ...Array.from({ length: 2 }, (_, i) => ({ id: i + 14, fullName: `Дитина ${i + 14}`, discountPercent: 20 })),
+        ...Array.from({ length: 10 }, (_, i) => ({
+          id: i + 1,
+          fullName: `Дитина ${i + 1}`,
+          discountPercent: 0,
+        })),
+        ...Array.from({ length: 3 }, (_, i) => ({
+          id: i + 11,
+          fullName: `Дитина ${i + 11}`,
+          discountPercent: 10,
+        })),
+        ...Array.from({ length: 2 }, (_, i) => ({
+          id: i + 14,
+          fullName: `Дитина ${i + 14}`,
+          discountPercent: 20,
+        })),
       ];
 
       mockRepo.findGroupById.mockResolvedValue({
@@ -350,6 +365,145 @@ describe('AnalyticsService', () => {
       expect(res.expenses.managerSalary.uah).toBe(90000);
       expect(res.expenses.clubTeachersSalary.uah).toBe(250000); // 5 * 50 000
       expect(res.expenses.roomsRent.uah).toBe(1500000); // 25 * 60 000
+    });
+  });
+
+  describe('calculateOptimalForecast', () => {
+    test('успішний розрахунок оптимального прогнозу для вікового попиту з грошовим форматуванням', async () => {
+      const demand = { 2: 12, 3: 12, 4: 12, 5: 12 };
+      const res = await service.calculateOptimalForecast(demand);
+
+      expect(res.requestedDemand).toBeDefined();
+      expect(res.requestedDemand[2]).toBe(12);
+      expect(res.requestedDemand.totalChildren).toBe(48);
+
+      // Секція 1: recommended
+      expect(res.recommended).toBeDefined();
+      expect(res.recommended.groupsCount).toBeGreaterThan(0);
+      expect(res.recommended.netProfit).toHaveProperty('uah');
+      expect(res.recommended.netProfit).toHaveProperty('kopiykas');
+      expect(res.recommended.financials.tuitionIncome).toHaveProperty('uah');
+      expect(res.recommended.financials.expenses.totalExpenses).toHaveProperty('uah');
+      expect(res.recommended.summary).toContain('Відкрити');
+
+      // Секція 2: strategies (maxProfit, comfortQuality, minimalInfrastructure, admitAll)
+      expect(res.strategies).toHaveProperty('maxProfit');
+      expect(res.strategies).toHaveProperty('comfortQuality');
+      expect(res.strategies).toHaveProperty('minimalInfrastructure');
+      expect(res.strategies).toHaveProperty('admitAll');
+
+      expect(res.strategies.maxProfit.financials.tuitionIncome).toHaveProperty('uah');
+      expect(res.strategies.maxProfit.financials.expenses.totalExpenses).toHaveProperty('uah');
+      expect(res.strategies.minimalInfrastructure.strategyCode).toBe('MINIMAL_INFRASTRUCTURE');
+      expect(res.strategies.minimalInfrastructure.netProfit).toHaveProperty('uah');
+
+      // Секція 3: marginalEconomics
+      expect(res.marginalEconomics).toBeDefined();
+      expect(res.marginalEconomics.marginalChild).toBeDefined();
+      expect(res.marginalEconomics.marginalChild.marginalProfit).toHaveProperty('uah');
+      expect(res.marginalEconomics.marginalChild.insight).toContain('приносить');
+
+      expect(res.marginalEconomics.clubTeachersStatus).toBeDefined();
+      expect(res.marginalEconomics.clubTeachersStatus.insight).toContain('Поточний штат гуртків');
+
+      expect(res.marginalEconomics.expansionAnalysis).toBeDefined();
+      expect(res.marginalEconomics.expansionAnalysis.costJump).toHaveProperty('uah');
+      expect(res.marginalEconomics.expansionAnalysis.breakdown.roomCost).toHaveProperty('uah');
+      expect(res.marginalEconomics.expansionAnalysis.insight).toContain(
+        'Відкриття наступної групи'
+      );
+
+      expect(res.marginalEconomics.roomsStatus).toBeDefined();
+    });
+
+    test('розрахунок для бажаної кількості дітей targetChildrenCount (150 дітей)', async () => {
+      const res = await service.calculateOptimalForecast({ targetChildrenCount: 150 });
+
+      expect(res.requestedDemand.totalChildren).toBe(150);
+      expect(res.recommended.totalAdmitted).toBe(150);
+      expect(res.recommended.groupsCount).toBeGreaterThanOrEqual(8);
+      expect(res.strategies.minimalInfrastructure.groupsCount).toBe(8);
+      expect(res.strategies.maxProfit.totalAdmitted).toBe(150);
+      expect(res.strategies.minimalInfrastructure.totalAdmitted).toBe(150);
+    });
+
+    test('розрахунок для нульового попиту (садок без дітей)', async () => {
+      const demand = { 2: 0, 3: 0, 4: 0, 5: 0 };
+      const res = await service.calculateOptimalForecast(demand);
+
+      expect(res.requestedDemand.totalChildren).toBe(0);
+      expect(res.topVariants[0].totalAdmitted).toBe(0);
+      expect(res.strategies.maxProfit.totalGroups).toBe(0);
+      expect(res.marginalEconomics.roomsStatus.occupiedTotal).toBe(0);
+    });
+
+    test('розрахунок з відхиленими дітьми та форматуванням barrierCost у waitlistAdvice', async () => {
+      // 1 дитина 2 років - нерентабельно відкривати групу
+      const demand = { 2: 1, 3: 0, 4: 0, 5: 0 };
+      const res = await service.calculateOptimalForecast(demand);
+
+      expect(res.strategies.maxProfit.totalGroups).toBe(0);
+      expect(res.marginalEconomics.waitlistAdvice.length).toBeGreaterThan(0);
+      const advice2 = res.marginalEconomics.waitlistAdvice.find((a) => a.age === 2);
+      expect(advice2).toBeDefined();
+      expect(advice2.rejectedCount).toBe(1);
+      if (advice2.barrierCost) {
+        expect(advice2.barrierCost).toHaveProperty('uah');
+        expect(advice2.barrierCost).toHaveProperty('kopiykas');
+      }
+    });
+
+    test('підтримує кастомні опції attendanceRate та threshold у запиті', async () => {
+      const res = await service.calculateOptimalForecast({
+        targetChildrenCount: 24,
+        attendanceRate: 0.9,
+        threshold: 10,
+      });
+
+      expect(res.recommended).toBeDefined();
+      expect(res.recommended.totalAdmitted).toBe(24);
+    });
+  });
+
+  describe('formatVariantFinancials & formatOptimalForecastMoney helpers', () => {
+    test('formatVariantFinancials повертає null якщо передано null або undefined', () => {
+      expect(formatVariantFinancials(null)).toBeNull();
+      expect(formatVariantFinancials(undefined)).toBeNull();
+    });
+
+    test('formatVariantFinancials коректно форматує об’єкт без ageBreakdown', () => {
+      const cfg = {
+        totalGroups: 2,
+        netProfit: 1000000,
+        tuitionIncome: 3000000,
+        mealIncome: 500000,
+        totalIncome: 3500000,
+        totalRoomsRent: 1000000,
+        totalAssistantsSalary: 400000,
+        totalEducatorsSalary: 400000,
+        totalClubTeachersSalary: 200000,
+        totalManagerSalary: 80000,
+        totalStaffSalaries: 1080000,
+        totalExpenses: 2080000,
+      };
+      const formatted = formatVariantFinancials(cfg);
+      expect(formatted.groupsCount).toBe(2);
+      expect(formatted.netProfit.uah).toBe(10000);
+      expect(formatted.financials.tuitionIncome.uah).toBe(30000);
+      expect(formatted.profitDifference).toBeUndefined();
+    });
+
+    test('formatOptimalForecastMoney коректно обробляє пустий або частковий результат', () => {
+      const raw = {
+        requestedDemand: { 2: 0, 3: 0, 4: 0, 5: 0, totalChildren: 0 },
+      };
+      const res = formatOptimalForecastMoney(raw);
+      expect(res.recommended).toBeNull();
+      expect(res.topVariants).toEqual([]);
+      expect(res.strategies).toEqual({});
+      expect(res.marginalEconomics.marginalChild).toBeNull();
+      expect(res.marginalEconomics.expansionAnalysis).toBeNull();
+      expect(res.marginalEconomics.waitlistAdvice).toEqual([]);
     });
   });
 });

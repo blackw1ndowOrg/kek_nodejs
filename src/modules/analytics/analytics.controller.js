@@ -15,6 +15,11 @@ class AnalyticsController {
     const result = await this.service.getTotalProfit();
     res.status(StatusCodes.OK).json(result);
   };
+
+  getForecast = async (req, res) => {
+    const result = await this.service.calculateOptimalForecast(req.body);
+    res.status(StatusCodes.OK).json(result);
+  };
 }
 
 const analyticsController = new AnalyticsController();
@@ -23,4 +28,3 @@ module.exports = {
   AnalyticsController,
   analyticsController,
 };
-

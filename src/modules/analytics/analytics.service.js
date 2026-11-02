@@ -6,6 +6,7 @@ const {
   clubTeacherSalary,
   managerSalary,
 } = require('../../domain/salary');
+const { optimizeKindergartenCapacity } = require('../../domain/forecast');
 const { toMoney } = require('../../domain/money');
 const { settingsService } = require('../settings/settings.service');
 const { analyticsRepository } = require('./analytics.repository');
@@ -224,6 +225,150 @@ class AnalyticsService {
       groups: groupsBreakdown,
     };
   }
+
+  /**
+   * Розрахунок оптимальної економічної моделі дитячого садка під динамічний віковий попит:
+   * - Оптимізує заповнення груп з урахуванням порогу 12 дітей (доплати вихователям і помічникам);
+   * - Враховує вартість кожної задіяної кімнати (50 000 грн/міс);
+   * - Враховує 5 окремих кабінетів для гуртків;
+   * - Враховує 8-годинний робочий день викладачів гуртків (40 занять/тиждень, до 13 груп на 5 викладачів);
+   * - Враховує диференційований дохід від харчування за віком (2 р. - 300 грн, 3 р. - 400 грн, 4 р. - 500 грн, 5 р. - 600 грн на день);
+   * - Відсікає нерентабельні залишки дітей (waitlist), якщо вони створюють надлишкові витрати на відкриття кімнати;
+   * - Повертає 3 секції:
+   *   1. recommended: абсолютний фінансовий оптимум (скільки груп відкрити, кімнат зайняти, викладачів найняти, чистий прибуток);
+   *   2. strategies: MAX_PROFIT, COMFORT_QUALITY, MINIMAL_INFRASTRUCTURE;
+   *   3. marginalEconomics: аналіз меж (marginalChild, clubTeachersStatus, expansionAnalysis, roomsStatus, waitlistAdvice).
+   *
+   * @param {Object} demand
+   */
+  async calculateOptimalForecast(demand = {}) {
+    const options = {
+      tuition: this.settings.get('TUITION_MONTHLY'),
+      ratePerChild: this.settings.get('EDUCATOR_PER_CHILD'),
+      extraPay: this.settings.get('EDUCATOR_EXTRA_PAY'),
+      assistantBase: this.settings.get('ASSISTANT_SALARY'),
+      assistantExtra: this.settings.get('ASSISTANT_EXTRA_PAY'),
+      threshold: demand.threshold ?? this.settings.get('GROUP_EXTRA_PAY_THRESHOLD'),
+      clubSalary: this.settings.get('CLUB_TEACHER_SALARY'),
+      mgrSalary: this.settings.get('MANAGER_SALARY'),
+      roomCost: this.settings.get('ROOM_MONTHLY_COST'),
+      totalRoomsCount: this.settings.get('DEFAULT_ROOMS_COUNT'),
+      maxChildrenInGroup: this.settings.get('MAX_CHILDREN_IN_GROUP'),
+      mealBasePerDay: this.settings.get('MEAL_BASE_PER_DAY'),
+      mealPerExtraYear: this.settings.get('MEAL_PER_EXTRA_YEAR'),
+      attendanceRate: demand.attendanceRate,
+    };
+
+    const rawResult = optimizeKindergartenCapacity(demand, options);
+    return formatOptimalForecastMoney(rawResult);
+  }
+}
+
+function formatVariantFinancials(cfg) {
+  if (!cfg) return null;
+  const financials = {
+    tuitionIncome: toMoney(cfg.tuitionIncome),
+    mealIncome: toMoney(cfg.mealIncome),
+    totalIncome: toMoney(cfg.totalIncome),
+    expenses: {
+      roomsRent: toMoney(cfg.totalRoomsRent),
+      assistantsSalary: toMoney(cfg.totalAssistantsSalary),
+      educatorsSalary: toMoney(cfg.totalEducatorsSalary),
+      clubTeachersSalary: toMoney(cfg.totalClubTeachersSalary),
+      managerSalary: toMoney(cfg.totalManagerSalary),
+      totalStaffSalaries: toMoney(cfg.totalStaffSalaries),
+      totalExpenses: toMoney(cfg.totalExpenses),
+    },
+    netProfit: toMoney(cfg.netProfit),
+  };
+
+  const formattedAgeBreakdown = {};
+  if (cfg.ageBreakdown) {
+    for (const [ageKey, ageData] of Object.entries(cfg.ageBreakdown)) {
+      formattedAgeBreakdown[ageKey] = {
+        age: ageData.age,
+        demanded: ageData.demanded,
+        admitted: ageData.admitted,
+        rejected: ageData.rejected,
+        groupsCount: ageData.groupsCount,
+        groupSizes: ageData.groupSizes,
+        tuitionIncome: toMoney(ageData.tuitionIncome),
+        mealIncome: toMoney(ageData.mealIncome),
+        totalIncome: toMoney(ageData.totalIncome),
+        educatorsSalary: toMoney(ageData.educatorsSalary),
+        assistantsSalary: toMoney(ageData.assistantsSalary),
+      };
+    }
+  }
+
+  return {
+    ...cfg,
+    groupsCount: cfg.totalGroups,
+    netProfit: toMoney(cfg.netProfit),
+    profitDifference:
+      cfg.profitDifference !== undefined ? toMoney(cfg.profitDifference) : undefined,
+    financials,
+    ageBreakdown: formattedAgeBreakdown,
+  };
+}
+
+function formatOptimalForecastMoney(rawResult) {
+  const recommended = rawResult.recommended ? formatVariantFinancials(rawResult.recommended) : null;
+
+  const topVariants = (rawResult.topVariants || []).map((v) => formatVariantFinancials(v));
+
+  const strategies = {};
+  if (rawResult.strategies) {
+    for (const [code, strat] of Object.entries(rawResult.strategies)) {
+      const formatted = formatVariantFinancials(strat);
+      strategies[code] = formatted;
+      if (strat.strategyCode && strat.strategyCode !== code) {
+        strategies[strat.strategyCode] = formatted;
+      }
+    }
+  }
+
+  const waitlistAdvice = (rawResult.marginalEconomics?.waitlistAdvice || []).map((advice) => ({
+    ...advice,
+    barrierCost: advice.barrierCost !== undefined ? toMoney(advice.barrierCost) : undefined,
+  }));
+
+  const rawMarginal = rawResult.marginalEconomics || {};
+
+  const marginalChild = rawMarginal.marginalChild
+    ? {
+        ...rawMarginal.marginalChild,
+        marginalIncome: toMoney(rawMarginal.marginalChild.marginalIncome),
+        marginalCost: toMoney(rawMarginal.marginalChild.marginalCost),
+        marginalProfit: toMoney(rawMarginal.marginalChild.marginalProfit),
+      }
+    : null;
+
+  const expansionAnalysis = rawMarginal.expansionAnalysis
+    ? {
+        ...rawMarginal.expansionAnalysis,
+        costJump: toMoney(rawMarginal.expansionAnalysis.costJump),
+        breakdown: {
+          roomCost: toMoney(rawMarginal.expansionAnalysis.breakdown.roomCost),
+          assistantBase: toMoney(rawMarginal.expansionAnalysis.breakdown.assistantBase),
+          clubTeachersCost: toMoney(rawMarginal.expansionAnalysis.breakdown.clubTeachersCost),
+        },
+      }
+    : null;
+
+  return {
+    requestedDemand: rawResult.requestedDemand,
+    recommended,
+    strategies,
+    marginalEconomics: {
+      marginalChild,
+      clubTeachersStatus: rawMarginal.clubTeachersStatus,
+      expansionAnalysis,
+      roomsStatus: rawMarginal.roomsStatus,
+      waitlistAdvice,
+    },
+    topVariants,
+  };
 }
 
 const analyticsService = new AnalyticsService();
@@ -232,6 +377,8 @@ module.exports = {
   AnalyticsService,
   analyticsService,
   toMoney,
+  formatVariantFinancials,
+  formatOptimalForecastMoney,
   DEFAULT_CLUB_TEACHERS_COUNT,
   DEFAULT_MANAGERS_COUNT,
   DEFAULT_TOTAL_ROOMS_COUNT,

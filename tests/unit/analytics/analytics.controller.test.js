@@ -14,10 +14,12 @@ describe('AnalyticsController', () => {
     mockService = {
       getGroupProfit: jest.fn(),
       getTotalProfit: jest.fn(),
+      calculateOptimalForecast: jest.fn(),
     };
     controller = new AnalyticsController(mockService);
     mockReq = {
       params: {},
+      body: {},
     };
     mockRes = {
       status: jest.fn().mockReturnThis(),
@@ -55,5 +57,24 @@ describe('AnalyticsController', () => {
       expect(mockRes.json).toHaveBeenCalledWith(totalData);
     });
   });
-});
 
+  describe('getForecast', () => {
+    test('викликає service.calculateOptimalForecast та повертає статус 200 із трьома секціями', async () => {
+      mockReq.body = { targetChildrenCount: 150 };
+      const forecastData = {
+        recommended: { groupsCount: 8, netProfit: { uah: 140000 } },
+        strategies: { maxProfit: {}, comfortQuality: {}, minimalInfrastructure: {} },
+        marginalEconomics: { marginalChild: {}, clubTeachersStatus: {}, expansionAnalysis: {} },
+      };
+      mockService.calculateOptimalForecast.mockResolvedValue(forecastData);
+
+      await controller.getForecast(mockReq, mockRes);
+
+      expect(mockService.calculateOptimalForecast).toHaveBeenCalledWith({
+        targetChildrenCount: 150,
+      });
+      expect(mockRes.status).toHaveBeenCalledWith(StatusCodes.OK);
+      expect(mockRes.json).toHaveBeenCalledWith(forecastData);
+    });
+  });
+});
