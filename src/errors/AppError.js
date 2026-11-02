@@ -2,7 +2,12 @@ const { StatusCodes } = require('http-status-codes');
 const { ErrorCodes } = require('./errorCodes');
 
 class AppError extends Error {
-  constructor(message, statusCode = StatusCodes.INTERNAL_SERVER_ERROR, code = ErrorCodes.INTERNAL_ERROR, details = null) {
+  constructor(
+    message,
+    statusCode = StatusCodes.INTERNAL_SERVER_ERROR,
+    code = ErrorCodes.INTERNAL_ERROR,
+    details = null
+  ) {
     super(message);
     this.name = this.constructor.name;
     this.statusCode = statusCode;

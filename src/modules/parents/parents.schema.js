@@ -2,10 +2,7 @@ const { z } = require('zod');
 
 const parentIdParamSchema = z.object({
   params: z.object({
-    id: z
-      .string()
-      .regex(/^\d+$/, 'ID має бути цілим числом')
-      .transform(Number),
+    id: z.string().regex(/^\d+$/, 'ID має бути цілим числом').transform(Number),
   }),
 });
 

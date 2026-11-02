@@ -24,7 +24,7 @@ class BillingRepository {
 
   /**
    * Updates paidUntil only if it matches the expected date (optimistic concurrency check to prevent double payment).
-   * 
+   *
    * @param {string} childId
    * @param {Date|null} expectedPaidUntil
    * @param {Date} newPaidUntil

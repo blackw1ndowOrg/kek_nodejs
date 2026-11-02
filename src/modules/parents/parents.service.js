@@ -79,18 +79,14 @@ class ParentsService {
     }
 
     if (existing.debt > 0) {
-      throw new ConflictError(
-        'Неможливо видалити профіль батьків з непогашеним боргом'
-      );
+      throw new ConflictError('Неможливо видалити профіль батьків з непогашеним боргом');
     }
 
     // Захист: заборона видалення, якщо активна дитина залишиться без жодних зареєстрованих батьків
     if (existing.children && existing.children.length > 0) {
       const leavesOrphanChild = existing.children.some(({ child }) => {
         if (!child || !child.isActive) return false;
-        const otherParents = child.parents
-          ? child.parents.filter((p) => p.parentId !== id)
-          : [];
+        const otherParents = child.parents ? child.parents.filter((p) => p.parentId !== id) : [];
         return otherParents.length === 0;
       });
 
