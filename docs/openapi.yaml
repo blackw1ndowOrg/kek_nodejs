@@ -886,4 +886,309 @@ paths:
         '204':
           description: Вихованця деактивовано
         '404':
+          description: Дитину не знайдено\n
+  # --- PARENTS MODULE ---
+  /api/v1/parents:
+    get:
+      summary: Отримання списку батьків (ADMIN, MANAGER)
+      tags:
+        - Parents
+      parameters:
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+          description: Пошук за ПІБ або номером телефону
+      responses:
+        '200':
+          description: Список батьків
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Parent'
+    post:
+      summary: Створення картки батьків (+ опціонально акаунт User) (ADMIN, MANAGER)
+      tags:
+        - Parents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParentCreate'
+      responses:
+        '201':
+          description: Батьків успішно створено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parent'
+        '400':
+          description: Помилка валідації
+        '409':
+          description: Користувач з таким email вже існує
+
+  /api/v1/parents/{id}:
+    get:
+      summary: Отримання картки батьків за ID (ADMIN, MANAGER)
+      tags:
+        - Parents
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Інформація про батьків та їх дітей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parent'
+        '404':
+          description: Батьків не знайдено
+    patch:
+      summary: Оновлення даних батьків (ADMIN, MANAGER)
+      tags:
+        - Parents
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParentUpdate'
+      responses:
+        '200':
+          description: Дані батьків успішно оновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Parent'
+        '404':
+          description: Батьків не знайдено
+    delete:
+      summary: Видалення картки батьків (ADMIN, MANAGER)
+      tags:
+        - Parents
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Картку батьків успішно видалено
+        '404':
+          description: Батьків не знайдено
+        '409':
+          description: Неможливо видалити з непогашеним боргом або якщо дитина залишиться сиротою
+
+  # --- STAFF MODULE ---
+  /api/v1/staff:
+    get:
+      summary: Отримання списку співробітників (ADMIN, MANAGER, TEACHER)
+      tags:
+        - Staff
+      parameters:
+        - in: query
+          name: type
+          required: false
+          schema:
+            type: string
+            enum: [EDUCATOR, ASSISTANT, CLUB_TEACHER, MANAGER]
+          description: Фільтр за посадою
+        - in: query
+          name: isActive
+          required: false
+          schema:
+            type: boolean
+          description: Фільтр за статусом активності
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+          description: Пошук за ПІБ (нечутливий до регістру)
+      responses:
+        '200':
+          description: Список співробітників
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Staff'
+    post:
+      summary: Реєстрація співробітника (+ акаунт User) (ADMIN, MANAGER)
+      tags:
+        - Staff
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffCreate'
+      responses:
+        '201':
+          description: Співробітника зареєстровано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Staff'
+        '400':
+          description: Помилка валідації
+        '409':
+          description: Користувач з таким email вже існує
+
+  /api/v1/staff/{id}:
+    get:
+      summary: Інформація про співробітника, його групи та гуртки (ADMIN, MANAGER, TEACHER)
+      tags:
+        - Staff
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Деталі співробітника
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Staff'
+        '404':
+          description: Співробітника не знайдено
+    patch:
+      summary: Оновлення ПІБ, посади або статусу активності (ADMIN, MANAGER)
+      tags:
+        - Staff
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StaffUpdate'
+      responses:
+        '200':
+          description: Дані співробітника оновлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Staff'
+        '404':
+          description: Співробітника не знайдено
+        '409':
+          description: Заборонено змінювати посаду чи вимикати співробітника з активною групою/гуртком
+    delete:
+      summary: Видалення співробітника (ADMIN, MANAGER)
+      tags:
+        - Staff
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Співробітника видалено
+        '404':
+          description: Співробітника не знайдено
+        '409':
+          description: Неможливо видалити працівника, закріпленого за діючою групою або гуртком
+
+  /api/v1/staff/{id}/salary:
+    get:
+      summary: Розрахунок заробітної плати співробітника (ADMIN, MANAGER)
+      tags:
+        - Staff
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Розрахунок заробітної плати
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StaffSalaryResponse'
+        '403':
+          description: Недостатньо прав (потрібен ADMIN або MANAGER)
+        '404':
+          description: Співробітника не знайдено
+
+  # --- BILLING MODULE ---
+  /api/v1/billing/children/{childId}:
+    get:
+      summary: Розрахунок вартості навчання та харчування дитини (PARENT, ADMIN, MANAGER)
+      tags:
+        - Billing
+      parameters:
+        - in: path
+          name: childId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Деталі чека за місяць і рік
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingCalculationResponse'
+        '400':
+          description: Дитина не закріплена за віковою групою
+        '404':
           description: Дитину не знайдено
+  /api/v1/billing/children/{childId}/payments:
+    post:
+      summary: Проведення оплати за навчання дитини (PARENT, ADMIN, MANAGER)
+      tags:
+        - Billing
+      parameters:
+        - in: path
+          name: childId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: Оплату успішно проведено, оплачений період продовжено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Дитина не є активною
+        '404':
+          description: Дитину не знайдено
+        '409':
+          description: Конфлікт статусу оплати (паралельний запит)
