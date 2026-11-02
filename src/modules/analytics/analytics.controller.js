@@ -7,12 +7,12 @@ class AnalyticsController {
   }
 
   getGroupProfit = async (req, res) => {
-    const result = await this.service.getGroupProfit(req.params.id);
+    const result = await this.service.getGroupProfit(req.params.id, req.query);
     res.status(StatusCodes.OK).json(result);
   };
 
-  getTotalProfit = async (_req, res) => {
-    const result = await this.service.getTotalProfit();
+  getTotalProfit = async (req, res) => {
+    const result = await this.service.getTotalProfit(req.query);
     res.status(StatusCodes.OK).json(result);
   };
 

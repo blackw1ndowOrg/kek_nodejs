@@ -1,5 +1,6 @@
 const {
   groupProfitSchema,
+  totalProfitSchema,
   forecastSchema,
 } = require('../../../src/modules/analytics/analytics.schema');
 
@@ -28,9 +29,35 @@ describe('Analytics Schema Validation', () => {
       expect(() => groupProfitSchema.parse({ params: { id: 'invalid' } })).toThrow();
     });
 
+    test('валідує опціональний attendanceRate у query', () => {
+      const parsed = groupProfitSchema.parse({
+        params: { id: 1 },
+        query: { attendanceRate: '0.9' },
+      });
+      expect(parsed.params.id).toBe(1);
+      expect(parsed.query.attendanceRate).toBe(0.9);
+    });
+
     test('помилка при відсутності params або id', () => {
       expect(() => groupProfitSchema.parse({ params: {} })).toThrow();
       expect(() => groupProfitSchema.parse({})).toThrow();
+    });
+  });
+
+  describe('totalProfitSchema', () => {
+    test('проходить без query параметрів', () => {
+      const parsed = totalProfitSchema.parse({});
+      expect(parsed).toEqual({});
+    });
+
+    test('валідує валідний attendanceRate', () => {
+      const parsed = totalProfitSchema.parse({ query: { attendanceRate: 0.85 } });
+      expect(parsed.query.attendanceRate).toBe(0.85);
+    });
+
+    test('викидає помилку на невалідний attendanceRate (> 1 або від’ємний)', () => {
+      expect(() => totalProfitSchema.parse({ query: { attendanceRate: 1.2 } })).toThrow();
+      expect(() => totalProfitSchema.parse({ query: { attendanceRate: -0.1 } })).toThrow();
     });
   });
 
@@ -106,6 +133,27 @@ describe('Analytics Schema Validation', () => {
       });
       expect(parsed.body.attendanceRate).toBe(0.8);
       expect(parsed.body.threshold).toBe(10);
+    });
+
+    test('валідує вікові ключі 2, 3, 4, 5 у тілі запиту', () => {
+      const parsed = forecastSchema.parse({
+        body: { 2: 21, 3: 24, 4: 10, 5: 13 },
+      });
+      expect(parsed.body[2]).toBe(21);
+      expect(parsed.body[3]).toBe(24);
+      expect(parsed.body[4]).toBe(10);
+      expect(parsed.body[5]).toBe(13);
+    });
+
+    test('коерсить коректні строкові значення вікового попиту та валідує невалідні', () => {
+      const parsed = forecastSchema.parse({ body: { 2: '21', 3: 20 } });
+      expect(parsed.body[2]).toBe(21);
+      expect(() => forecastSchema.parse({ body: { 2: '   ' } })).toThrow();
+      expect(() => forecastSchema.parse({ body: { 2: 'not-a-number' } })).toThrow();
+    });
+
+    test('викидає помилку при від’ємному віковому попиті', () => {
+      expect(() => forecastSchema.parse({ body: { 2: -5 } })).toThrow();
     });
 
     test('викидає помилку при невалідних attendanceRate та threshold', () => {

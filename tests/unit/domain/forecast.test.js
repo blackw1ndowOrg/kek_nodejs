@@ -9,7 +9,6 @@ const {
   validateOptions,
   evaluateConfiguration,
   optimizeKindergartenCapacity,
-  calculateForecastDomain,
   MAX_KINDERGARTEN_CAPACITY,
   MAX_CHILDREN_PER_GROUP,
   MAX_GROUP_ROOMS,
@@ -307,6 +306,9 @@ describe('Domain: forecast (src/domain/forecast.js)', () => {
       expect(() => validateOptions({ totalRoomsCount: -5 })).toThrow(BadRequestError);
       expect(() => validateOptions({ clubRoomsCount: 2.5 })).toThrow(BadRequestError);
       expect(() => validateOptions({ workingDays: -1 })).toThrow(BadRequestError);
+      expect(() => validateOptions({ assistantExtra: -1 })).toThrow(BadRequestError);
+      expect(() => validateOptions({ assistantExtra: 2.5 })).toThrow(BadRequestError);
+      expect(() => validateOptions({ assistantExtra: 'invalid' })).toThrow(BadRequestError);
     });
 
     test('attendanceRate поза межами (0, 1] викидає помилку', () => {
@@ -663,120 +665,100 @@ describe('Domain: forecast (src/domain/forecast.js)', () => {
     });
   });
 
-  describe('calculateForecastDomain', () => {
-    test('граничне значення: 0 дітей (садок без дітей, фіксовані витрати)', () => {
-      const forecast = calculateForecastDomain({ targetChildrenCount: 0 });
-
-      expect(forecast.targetChildrenCount).toBe(0);
-      expect(forecast.groupsCount).toBe(0);
-      expect(forecast.educatorsCount).toBe(0);
-      expect(forecast.assistantsCount).toBe(0);
-      expect(forecast.clubTeachersCount).toBe(0); // 0 груп -> 0 викладачів гуртків
-      expect(forecast.managersCount).toBe(1);
-      expect(forecast.roomsCount).toBe(20);
-
-      // Дохід
-      expect(forecast.baseTuition).toBe(1500000); // 15 000 грн
-      expect(forecast.projectedIncome).toBe(0);
-
-      // Зарплати персоналу
-      expect(forecast.totalEducatorsSalary).toBe(0);
-      expect(forecast.totalAssistantsSalary).toBe(0);
-      expect(forecast.groupsStaffSalaryFund).toBe(0);
-      expect(forecast.totalClubTeachersSalary).toBe(0);
-      expect(forecast.totalManagerSalary).toBe(8000000); // 1 * 80 000 грн = 80 000 грн
-      expect(forecast.totalStaffSalaries).toBe(8000000); // 80 000 грн
-
-      // Оренда всіх 20 кімнат
-      expect(forecast.totalRoomsRent).toBe(100000000); // 20 * 50 000 грн = 1 000 000 грн
-
-      // Загальні витрати та чистий прибуток
-      expect(forecast.totalExpenses).toBe(108000000); // 1 080 000 грн
-      expect(forecast.netProfit).toBe(-108000000);
-      expect(forecast.groups).toEqual([]);
-    });
-
-    test('значення: 150 дітей (8 груп, точний розрахунок за ставками ТЗ)', () => {
-      const forecast = calculateForecastDomain({ targetChildrenCount: 150 });
-
-      expect(forecast.targetChildrenCount).toBe(150);
-      expect(forecast.groupsCount).toBe(8);
-      expect(forecast.educatorsCount).toBe(8);
-      expect(forecast.assistantsCount).toBe(8);
-      expect(forecast.clubTeachersCount).toBe(5); // 8 груп <= 13 -> 1 комплект (5 викладачів)
-      expect(forecast.managersCount).toBe(1);
-      expect(forecast.roomsCount).toBe(20);
-
-      expect(forecast.totalRoomsRent).toBe(100000000);
-      expect(forecast.projectedIncome).toBe(225000000);
-      expect(forecast.groups).toHaveLength(8);
-      expect(forecast.groups.reduce((acc, g) => acc + g.childrenCount, 0)).toBe(150);
-    });
-
-    test('граничне значення: 300 дітей (максимальна місткість, 15 повних груп)', () => {
-      const forecast = calculateForecastDomain({ targetChildrenCount: 300 });
-
-      expect(forecast.targetChildrenCount).toBe(300);
-      expect(forecast.groupsCount).toBe(15);
-      expect(forecast.educatorsCount).toBe(15);
-      expect(forecast.assistantsCount).toBe(15);
-      // 15 груп вимагають 2 комплекти викладачів (10 викладачів)
-      expect(forecast.clubTeachersCount).toBe(10);
-      expect(forecast.totalClubTeachersSalary).toBe(40000000); // 10 * 40 000 грн = 400 000 грн
-
-      // Персонал: 1 620 000 (групи) + 400 000 (гуртки) + 80 000 (менеджер) = 2 100 000 грн (210 000 000 коп)
-      expect(forecast.totalStaffSalaries).toBe(210000000);
-      expect(forecast.totalRoomsRent).toBe(100000000);
-      expect(forecast.totalExpenses).toBe(310000000);
-      expect(forecast.projectedIncome).toBe(450000000);
-      expect(forecast.netProfit).toBe(140000000);
-      expect(forecast.groups).toHaveLength(15);
-    });
-
-    test('301 дитина -> BadRequestError', () => {
-      expect(() => calculateForecastDomain({ targetChildrenCount: 301 })).toThrow(BadRequestError);
-      expect(() => calculateForecastDomain({ targetChildrenCount: 301 })).toThrow(
-        /cannot exceed maximum capacity of 300/i
+  describe('Нові покращення та валідації (Issues 1.1, 2.4, 3.1)', () => {
+    test('distributeChildrenOptimally: викидає BadRequestError якщо admitted > g * capPerGroup (Issue 3.1)', () => {
+      expect(() => distributeChildrenOptimally(41, 2, 12, 20)).toThrow(BadRequestError);
+      expect(() => distributeChildrenOptimally(41, 2, 12, 20)).toThrow(
+        /exceeds total capacity of 2 groups/i
       );
     });
 
-    test('виклик без аргументів викидає BadRequestError', () => {
-      expect(() => calculateForecastDomain()).toThrow(BadRequestError);
-    });
-
-    test('calculateForecastDomain завжди враховує оренду всіх 20 кімнат', () => {
-      const forecast = calculateForecastDomain({
-        targetChildrenCount: 20,
-        roomsCount: 20,
-        roomCost: 5000000,
+    test('normalizeAgeDemand: додає попередження, якщо передано і targetChildrenCount, і віковий ключ (Issue 2.4)', () => {
+      const res = optimizeKindergartenCapacity({
+        targetChildrenCount: 100,
+        2: 15,
       });
 
-      // Всі 20 кімнат * 50 000 грн = 1 000 000 грн
-      expect(forecast.totalRoomsRent).toBe(20 * 5000000);
+      expect(res.requestedDemand.warning).toContain(
+        'Параметр targetChildrenCount було проігноровано'
+      );
+      expect(res.requestedDemand[2]).toBe(15);
+      expect(res.requestedDemand.totalChildren).toBe(15);
     });
 
-    test('робота з кастомними ставками та налаштуваннями', () => {
-      const forecast = calculateForecastDomain({
-        targetChildrenCount: 40,
-        tuition: 2000000,
-        ratePerChild: 250000,
-        extraPay: 350000,
-        assistantBase: 2500000,
-        threshold: 10,
-        clubSalary: 5000000,
-        mgrSalary: 10000000,
-        roomCost: 6000000,
-        roomsCount: 10,
-        clubTeachersCount: 2,
-        managersCount: 1,
-      });
+    test('evaluateConfiguration та optimizeKindergartenCapacity: коректно використовують окремий assistantExtra (Issue 1.1)', () => {
+      // extraPay вихователя = 300 000 (3 000 грн), а assistantExtra = 150 000 (1 500 грн)
+      const res = evaluateConfiguration(
+        { 2: 1 },
+        { 2: 14, 3: 0, 4: 0, 5: 0 },
+        {
+          extraPay: 300000,
+          assistantExtra: 150000,
+          threshold: 12,
+        }
+      );
 
-      expect(forecast.targetChildrenCount).toBe(40);
-      expect(forecast.groupsCount).toBe(2);
-      expect(forecast.projectedIncome).toBe(40 * 2000000);
-      expect(forecast.totalRoomsRent).toBe(10 * 6000000);
-      expect(forecast.totalClubTeachersSalary).toBe(2 * 5000000);
-      expect(forecast.totalManagerSalary).toBe(10000000);
+      // Група з 14 дітей має 2 дітей понад поріг 12:
+      // Вихователь: 14 * 2 000 + 2 * 3 000 = 34 000 грн (3 400 000 коп)
+      expect(res.totalEducatorsSalary).toBe(3400000);
+      // Помічник: 20 000 + 2 * 1 500 = 23 000 грн (2 300 000 коп)
+      expect(res.totalAssistantsSalary).toBe(2300000);
+    });
+
+    test('дефолтні параметри функцій validateOptions, normalizeAgeDemand та evaluateConfiguration', () => {
+      expect(() => validateOptions()).not.toThrow();
+      expect(normalizeAgeDemand()).toEqual({ 2: 0, 3: 0, 4: 0, 5: 0 });
+      const cfg = evaluateConfiguration({ 2: 1 }, { 2: 10, 3: 0, 4: 0, 5: 0 });
+      expect(cfg.totalGroups).toBe(1);
+    });
+
+    test('normalizeAgeDemand: перевірка залишку r = 3 (targetChildrenCount = 7)', () => {
+      const res = normalizeAgeDemand({ targetChildrenCount: 7 });
+      expect(res).toEqual({ 2: 2, 3: 2, 4: 2, 5: 1 });
+    });
+
+    test('optimizeKindergartenCapacity: попередження про targetChildrenCount при нульовому попиті', () => {
+      const res = optimizeKindergartenCapacity({ targetChildrenCount: 0, 2: 0, 3: 0 });
+      expect(res.requestedDemand.warning).toBeDefined();
+      expect(res.recommended.groupsCount).toBe(0);
+    });
+
+    test('waitlistAdvice: чітке формування competitionNote для конкуренції за кімнати та слоти', () => {
+      // 1 вільна групова кімната на 2 вікові групи з відхиленими дітьми
+      const resRoom = optimizeKindergartenCapacity(
+        { 2: 1, 3: 1, 4: 0, 5: 0 },
+        { totalRoomsCount: 6, clubRoomsCount: 5 }
+      );
+      const adviceRoom = resRoom.marginalEconomics.waitlistAdvice.find((a) => a.competitionWarning);
+      expect(adviceRoom).toBeDefined();
+      expect(adviceRoom.competitionWarning).toContain('вільних групових кімнат');
+
+      // Конкуренція за слоти гуртків
+      const resClub = optimizeKindergartenCapacity(
+        { 2: 20 * 6, 3: 20 * 6, 4: 1, 5: 1 }, // 12 груп (залишився 1 слот гуртка на 2 вікові групи)
+        { totalRoomsCount: 20, clubRoomsCount: 5 }
+      );
+      const adviceClub = resClub.marginalEconomics.waitlistAdvice.find(
+        (a) => a.competitionWarning && a.competitionWarning.includes('слотів')
+      );
+      if (adviceClub) {
+        expect(adviceClub.competitionWarning).toContain('вільних слотів');
+      }
+    });
+
+    test('waitlistAdvice: випадок breakEvenChildren === null при неможливості беззбитковості', () => {
+      const res = optimizeKindergartenCapacity(
+        { 2: 1, 3: 0, 4: 0, 5: 0 },
+        {
+          tuition: 100, // мізерна вартість
+          ratePerChild: 10000000, // астрономічна ставка
+          assistantBase: 50000000,
+        }
+      );
+      const advice = res.marginalEconomics.waitlistAdvice.find((a) => a.age === 2);
+      expect(advice).toBeDefined();
+      expect(advice.breakEvenChildrenCount).toBeNull();
+      expect(advice.reason).toContain('не виходить на беззбитковість');
     });
   });
 });

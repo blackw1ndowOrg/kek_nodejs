@@ -90,6 +90,28 @@ class AnalyticsRepository {
       orderBy: { id: 'asc' },
     });
   }
+  /**
+   * Отримує кількість активних працівників садка за типами посад
+   */
+  async countActiveStaffByType() {
+    const groups = await this.db.staff.groupBy({
+      by: ['type'],
+      where: { isActive: true },
+      _count: { id: true },
+    });
+    const result = {
+      CLUB_TEACHER: 0,
+      MANAGER: 0,
+      EDUCATOR: 0,
+      ASSISTANT: 0,
+    };
+    for (const g of groups) {
+      if (g.type in result) {
+        result[g.type] = g._count.id;
+      }
+    }
+    return result;
+  }
 }
 
 const analyticsRepository = new AnalyticsRepository();

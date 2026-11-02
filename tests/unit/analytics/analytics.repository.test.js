@@ -16,6 +16,9 @@ describe('AnalyticsRepository', () => {
       child: {
         findMany: jest.fn(),
       },
+      staff: {
+        groupBy: jest.fn(),
+      },
     };
     repo = new AnalyticsRepository(mockDb);
   });
@@ -105,6 +108,53 @@ describe('AnalyticsRepository', () => {
         orderBy: { id: 'asc' },
       });
       expect(result).toEqual(mockGroups);
+    });
+  });
+
+  describe('countActiveStaffByType', () => {
+    test('викликає staff.groupBy з умовою isActive: true та мапить результат за типами', async () => {
+      mockDb.staff.groupBy.mockResolvedValue([
+        { type: 'CLUB_TEACHER', _count: { id: 5 } },
+        { type: 'MANAGER', _count: { id: 1 } },
+        { type: 'EDUCATOR', _count: { id: 4 } },
+        { type: 'ASSISTANT', _count: { id: 4 } },
+      ]);
+
+      const result = await repo.countActiveStaffByType();
+
+      expect(mockDb.staff.groupBy).toHaveBeenCalledWith({
+        by: ['type'],
+        where: { isActive: true },
+        _count: { id: true },
+      });
+      expect(result).toEqual({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 4,
+        ASSISTANT: 4,
+      });
+    });
+
+    test('повертає нулі для типів, яких немає в результаті groupBy та ігнорує сторонні типи', async () => {
+      mockDb.staff.groupBy.mockResolvedValue([
+        { type: 'CLUB_TEACHER', _count: { id: 2 } },
+        { type: 'CLEANER', _count: { id: 5 } },
+      ]);
+
+      const result = await repo.countActiveStaffByType();
+
+      expect(result).toEqual({
+        CLUB_TEACHER: 2,
+        MANAGER: 0,
+        EDUCATOR: 0,
+        ASSISTANT: 0,
+      });
+    });
+
+    test('прокидає помилку бази даних далі без мовчазного приглушення', async () => {
+      mockDb.staff.groupBy.mockRejectedValue(new Error('DB connection failed'));
+
+      await expect(repo.countActiveStaffByType()).rejects.toThrow('DB connection failed');
     });
   });
 });

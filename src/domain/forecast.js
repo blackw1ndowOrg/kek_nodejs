@@ -37,6 +37,15 @@ function validateOptions(options = {}) {
   const workingDays = options.workingDays ?? DEFAULT_WORKING_DAYS;
   const attendanceRate = options.attendanceRate ?? DEFAULT_ATTENDANCE_RATE;
 
+  if (options.assistantExtra !== undefined) {
+    if (!Number.isInteger(options.assistantExtra) || options.assistantExtra < 0) {
+      throw new BadRequestError(
+        `assistantExtra must be a non-negative integer: ${options.assistantExtra}`,
+        ErrorCodes.VALIDATION_ERROR
+      );
+    }
+  }
+
   if (!Number.isInteger(threshold) || threshold < 0) {
     throw new BadRequestError(
       `threshold must be a non-negative integer: ${threshold}`,
@@ -139,6 +148,12 @@ function distributeChildrenOptimally(
   }
   if (g === 0 || admitted === 0) {
     return [];
+  }
+  if (admitted > g * capPerGroup) {
+    throw new BadRequestError(
+      `Admitted children (${admitted}) exceeds total capacity of ${g} groups (${g * capPerGroup})`,
+      ErrorCodes.VALIDATION_ERROR
+    );
   }
 
   // Якщо дітей менше або дорівнює g * threshold:
@@ -257,6 +272,8 @@ function normalizeAgeDemand(rawDemand = {}) {
     }
   }
 
+  const hasWarning = rawDemand.targetChildrenCount !== undefined;
+
   const source =
     rawDemand.demand && typeof rawDemand.demand === 'object' && !Array.isArray(rawDemand.demand)
       ? rawDemand.demand
@@ -298,6 +315,10 @@ function normalizeAgeDemand(rawDemand = {}) {
     }
     normalized[age] = num;
   }
+  if (hasWarning) {
+    normalized._warning =
+      'Параметр targetChildrenCount було проігноровано, оскільки було обрано варіант обрахунку з конкретним віком.';
+  }
   return normalized;
 }
 
@@ -317,6 +338,7 @@ function evaluateConfiguration(gVec, demand, options = {}, mode = 'standard') {
     ratePerChild = 200000,
     extraPay = 300000,
     assistantBase = 2000000,
+    assistantExtra = options.assistantExtra ?? extraPay,
     threshold = DEFAULT_EXTRA_PAY_THRESHOLD,
     clubSalary = 4000000,
     mgrSalary = 8000000,
@@ -358,7 +380,7 @@ function evaluateConfiguration(gVec, demand, options = {}, mode = 'standard') {
     if (mode === 'standard' && g > 0 && admitted > g * threshold) {
       const excessChildren = admitted - g * threshold;
       const overloadedGroups = Math.ceil(excessChildren / (capPerGroup - threshold));
-      const marginalExtraCost = overloadedGroups * (2 * extraPay);
+      const marginalExtraCost = overloadedGroups * (extraPay + assistantExtra);
       const marginalChildProfit = baseTuition + mealPrice - ratePerChild;
       const marginalRevenue = excessChildren * marginalChildProfit;
 
@@ -381,7 +403,7 @@ function evaluateConfiguration(gVec, demand, options = {}, mode = 'standard') {
 
     for (const size of groupSizes) {
       const educ = educatorSalary(size, ratePerChild, extraPay, threshold);
-      const asst = assistantSalary(size, assistantBase, extraPay, threshold);
+      const asst = assistantSalary(size, assistantBase, assistantExtra, threshold);
       ageEducatorsSalary += educ;
       ageAssistantsSalary += asst;
       groupsList.push({
@@ -475,6 +497,8 @@ function evaluateConfiguration(gVec, demand, options = {}, mode = 'standard') {
  */
 function optimizeKindergartenCapacity(rawDemand, options = {}) {
   const demand = normalizeAgeDemand(rawDemand);
+  const demandWarning = demand._warning;
+  delete demand._warning;
   validateOptions(options);
 
   const {
@@ -485,6 +509,7 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
     ratePerChild = 200000,
     extraPay = 300000,
     assistantBase = 2000000,
+    assistantExtra = options.assistantExtra ?? extraPay,
     roomCost = 5000000,
     clubSalary = 4000000,
     mealBasePerDay = 30000,
@@ -534,7 +559,11 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
     const baseTuition = tuitionMonthly(0, tuition);
 
     return {
-      requestedDemand: { ...demand, totalChildren: totalDemand },
+      requestedDemand: {
+        ...demand,
+        totalChildren: totalDemand,
+        ...(demandWarning ? { warning: demandWarning } : {}),
+      },
       recommended: emptyRecommended,
       topVariants: [{ rank: 1, name: 'Садок без відкритих груп', ...emptyConfig }],
       strategies: {
@@ -542,8 +571,7 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
           ...emptyConfig,
           strategyCode: 'MAX_PROFIT',
           title: 'Максимальний прибуток (Економічно вивірена)',
-          description:
-            'Точка глобального оптимуму витрат і доходів',
+          description: 'Точка глобального оптимуму витрат і доходів',
           profitDifference: 0,
         },
         comfortQuality: {
@@ -769,7 +797,7 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
         for (let n = 1; n <= maxChildrenInGroup; n += 1) {
           const revenue = n * (unitTuition + unitMealPrice);
           const educCost = educatorSalary(n, ratePerChild, extraPay, threshold);
-          const asstExtra = n > threshold ? extraPay : 0;
+          const asstExtra = n > threshold ? assistantExtra : 0;
           const totalMarginalCost = fixedBarrierCost + educCost + asstExtra;
 
           if (revenue >= totalMarginalCost) {
@@ -827,7 +855,7 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
 
     if (groupWithSpace) {
       if (groupWithSpace.childrenCount === threshold) {
-        marginalCost += 2 * extraPay;
+        marginalCost += extraPay + assistantExtra;
       }
     } else if (freeRooms > 0) {
       const triggersClub = maxProfitConfig.totalGroups + 1 > maxClubCapacity;
@@ -857,9 +885,7 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
 
   // Аналіз статусу гуртків та масштабування (expansionAnalysis)
   const utilizationPercent =
-    maxClubCapacity > 0
-      ? Math.round((maxProfitConfig.totalGroups / maxClubCapacity) * 100)
-      : 0;
+    maxClubCapacity > 0 ? Math.round((maxProfitConfig.totalGroups / maxClubCapacity) * 100) : 0;
   const clubInsight =
     maxClubCapacity > 0
       ? `Поточний штат гуртків заповнений на ${utilizationPercent}% (${maxProfitConfig.totalGroups} з ${maxClubCapacity} груп).`
@@ -893,6 +919,7 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
     requestedDemand: {
       ...demand,
       totalChildren: totalDemand,
+      ...(demandWarning ? { warning: demandWarning } : {}),
     },
     recommended,
     topVariants,
@@ -900,8 +927,7 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
       maxProfit: {
         strategyCode: 'MAX_PROFIT',
         title: 'Максимальний прибуток (Економічно вивірена)',
-        description:
-          'Точка глобального оптимуму витрат і доходів',
+        description: 'Точка глобального оптимуму витрат і доходів',
         profitDifference: 0,
         ...maxProfitConfig,
       },
@@ -960,102 +986,10 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
   };
 }
 
-/**
- * Чиста функція розрахунку прогнозу доходів, витрат та прибутку садка для заданої кількості дітей.
- * Використовує узгоджені доменні функції та ціноутворення.
- *
- * @param {Object} options
- */
-function calculateForecastDomain({
-  targetChildrenCount,
-  tuition = 1500000,
-  ratePerChild = 200000,
-  extraPay = 300000,
-  assistantBase = 2000000,
-  threshold = DEFAULT_EXTRA_PAY_THRESHOLD,
-  clubSalary = 4000000,
-  mgrSalary = 8000000,
-  roomCost = 5000000,
-  maxGroupSize = MAX_CHILDREN_PER_GROUP,
-  maxCapacity = MAX_KINDERGARTEN_CAPACITY,
-  clubTeachersCount,
-  managersCount = DEFAULT_MANAGERS,
-  roomsCount = DEFAULT_TOTAL_ROOMS,
-} = {}) {
-  assertTargetChildrenCount(targetChildrenCount, maxCapacity);
-
-  const groupSizes = distributeChildrenIntoGroups(
-    targetChildrenCount,
-    maxGroupSize,
-    maxCapacity,
-    threshold
-  );
-  const groupsCount = groupSizes.length;
-  const educatorsCount = groupsCount;
-  const assistantsCount = groupsCount;
-
-  let totalEducatorsSalary = 0;
-  let totalAssistantsSalary = 0;
-
-  const groups = groupSizes.map((count, index) => {
-    const educator = educatorSalary(count, ratePerChild, extraPay, threshold);
-    const assistant = assistantSalary(count, assistantBase, extraPay, threshold);
-    totalEducatorsSalary += educator;
-    totalAssistantsSalary += assistant;
-
-    return {
-      groupIndex: index + 1,
-      childrenCount: count,
-      educatorSalary: educator,
-      assistantSalary: assistant,
-      totalStaffSalary: educator + assistant,
-    };
-  });
-
-  const actualClubTeachersCount =
-    clubTeachersCount !== undefined ? clubTeachersCount : calculateClubTeachersCount(groupsCount);
-
-  const groupsStaffSalaryFund = totalEducatorsSalary + totalAssistantsSalary;
-  const totalClubTeachersSalary = actualClubTeachersCount * clubTeacherSalary(clubSalary);
-  const totalManagerSalary = managersCount * managerSalary(mgrSalary);
-  const totalStaffSalaries = groupsStaffSalaryFund + totalClubTeachersSalary + totalManagerSalary;
-
-  // Оренда завжди за всі 20 кімнат будівлі садка (Issue 3.2)
-  const totalRoomsRent = roomsCount * roomCost;
-
-  const totalExpenses = totalStaffSalaries + totalRoomsRent;
-  const baseTuition = tuitionMonthly(0, tuition);
-  const projectedIncome = targetChildrenCount * baseTuition;
-  const netProfit = projectedIncome - totalExpenses;
-
-  return {
-    targetChildrenCount,
-    groupsCount,
-    educatorsCount,
-    assistantsCount,
-    clubTeachersCount: actualClubTeachersCount,
-    managersCount,
-    roomsCount,
-    baseTuition,
-    projectedIncome,
-    totalEducatorsSalary,
-    totalAssistantsSalary,
-    groupsStaffSalaryFund,
-    totalClubTeachersSalary,
-    totalManagerSalary,
-    totalStaffSalaries,
-    totalRoomsRent,
-    totalExpenses,
-    netProfit,
-    groups,
-  };
-}
-
 module.exports = {
   assertTargetChildrenCount,
   distributeChildrenOptimally,
   distributeChildrenIntoGroups,
-  calculateForecastDomain,
   calculateClubTeachersCount,
   normalizeAgeDemand,
   evaluateConfiguration,

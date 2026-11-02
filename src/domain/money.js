@@ -5,7 +5,7 @@ const KOPIYKAS_PER_UAH = 100;
 /**
  * Перетворює суму в копійках у структуру з гривнями та копійками (Money Value Object)
  * @param {number} kopiykas ціле число копійок
- * @returns {{ uah: number, hryvnias: number, kopecks: number, kopiykas: number }}
+ * @returns {{ uah: number, kopiykas: number }}
  */
 function toMoney(kopiykas) {
   if (!Number.isInteger(kopiykas)) {
@@ -14,8 +14,6 @@ function toMoney(kopiykas) {
   const uah = Number((kopiykas / KOPIYKAS_PER_UAH).toFixed(2));
   return {
     uah,
-    hryvnias: uah,
-    kopecks: kopiykas,
     kopiykas,
   };
 }
@@ -24,4 +22,3 @@ module.exports = {
   toMoney,
   KOPIYKAS_PER_UAH,
 };
-

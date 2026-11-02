@@ -40,12 +40,19 @@ describe('Analytics API (Supertest)', () => {
       {
         id: 2,
         name: 'Сонечко',
+        age: 3,
         roomId: 6,
         room: { id: 6, monthlyCost: 5000000 },
         children: MOCK_ACTIVE_CHILDREN,
         _count: { children: 2 },
       },
     ]);
+    jest.spyOn(analyticsRepository, 'countActiveStaffByType').mockResolvedValue({
+      CLUB_TEACHER: 5,
+      MANAGER: 1,
+      EDUCATOR: 1,
+      ASSISTANT: 1,
+    });
   });
 
   afterEach(() => {
@@ -115,10 +122,15 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.groupName).toBe('Сонечко');
       expect(res.body.childrenCount).toBe(2);
 
-      // Дохід: дитина 1 (15 000 грн) + дитина 2 (13 500 грн) = 28 500 грн (2 850 000 коп)
+      // Дохід: дитина 1 (15 000 грн) + дитина 2 (13 500 грн) = 28 500 грн навчання
+      // Харчування 3-річок (дефолтна відвідуваність 80%): 2 дітей * (400 грн * 21 день * 0.8) = 13 440 грн
+      // Сумарний дохід: 28 500 + 13 440 = 41 940 грн (4 194 000 коп)
       expect(res.body.income.tuition.uah).toBe(28500);
       expect(res.body.income.tuition.kopiykas).toBe(2850000);
-      expect(res.body.income.total.uah).toBe(28500);
+      expect(res.body.income.meal.uah).toBe(13440);
+      expect(res.body.income.meal.kopiykas).toBe(1344000);
+      expect(res.body.income.total.uah).toBe(41940);
+      expect(res.body.income.total.kopiykas).toBe(4194000);
 
       // Витрати:
       // Вихователь (2 дітей): 2 * 2 000 = 4 000 грн (400 000 коп)
@@ -134,11 +146,20 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.expenses.total.uah).toBe(74000);
       expect(res.body.expenses.total.kopiykas).toBe(7400000);
 
-      // Профіт: 28 500 - 74 000 = -45 500 грн (-4 550 000 коп)
-      expect(res.body.profit.uah).toBe(-45500);
-      expect(res.body.profit.kopiykas).toBe(-4550000);
-      expect(res.body.profit.hryvnias).toBe(-45500);
-      expect(res.body.profit.kopecks).toBe(-4550000);
+      // Профіт: 41 940 - 74 000 = -32 060 грн (-3 206 000 коп)
+      expect(res.body.profit.uah).toBe(-32060);
+      expect(res.body.profit.kopiykas).toBe(-3206000);
+    });
+
+    test('розрахунок профіту групи з кастомним attendanceRate=1 в query', async () => {
+      const res = await request(app)
+        .get(`${BASE}/groups/2/profit?attendanceRate=1`)
+        .set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.income.meal.uah).toBe(16800);
+      expect(res.body.income.total.uah).toBe(45300);
+      expect(res.body.profit.uah).toBe(-28700);
     });
 
     test('групу не знайдено -> 404 NOT_FOUND', async () => {
@@ -160,6 +181,15 @@ describe('Analytics API (Supertest)', () => {
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
       expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
     });
+
+    test('невалідний attendanceRate в query -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .get(`${BASE}/groups/2/profit?attendanceRate=1.5`)
+        .set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
   });
 
   describe('GET /api/v1/analytics/profit', () => {
@@ -170,12 +200,18 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.activeChildrenCount).toBe(2);
       expect(res.body.groupsCount).toBe(1);
       expect(res.body.roomsCount).toBe(20);
+      expect(res.body.educatorsCount).toBe(1);
+      expect(res.body.assistantsCount).toBe(1);
       expect(res.body.clubTeachersCount).toBe(5);
       expect(res.body.managersCount).toBe(1);
 
-      // Дохід від 2 дітей: 28 500 грн (2 850 000 коп)
+      // Дохід від 2 дітей: 28 500 грн навчання + 13 440 грн харчування (80% відвідуваності за замовчуванням) = 41 940 грн
       expect(res.body.income.tuition.uah).toBe(28500);
       expect(res.body.income.tuition.kopiykas).toBe(2850000);
+      expect(res.body.income.meal.uah).toBe(13440);
+      expect(res.body.income.meal.kopiykas).toBe(1344000);
+      expect(res.body.income.total.uah).toBe(41940);
+      expect(res.body.income.total.kopiykas).toBe(4194000);
 
       // Витрати:
       // Вихователі (1 група з 2 дітьми): 4 000 грн (400 000 коп)
@@ -190,13 +226,59 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.expenses.staffSalaries.uah).toBe(304000);
       // Оренда 20 кімнат: 1 000 000 грн (100 000 000 коп)
       expect(res.body.expenses.roomsRent.uah).toBe(1000000);
+      expect(res.body.expenses.operatingRoomsRent.uah).toBe(300000); // 1 групова + 5 гурткових = 6 кімнат
+      expect(res.body.expenses.idleRoomsRent.uah).toBe(700000); // 14 кімнат простою
       // Загальні витрати: 304 000 + 1 000 000 = 1 304 000 грн (130 400 000 коп)
       expect(res.body.expenses.total.uah).toBe(1304000);
 
-      // Чистий профіт: 28 500 - 1 304 000 = -1 275 500 грн (-127 550 000 коп)
-      expect(res.body.profit.uah).toBe(-1275500);
-      expect(res.body.profit.kopiykas).toBe(-127550000);
-      expect(res.body.netProfit.uah).toBe(-1275500);
+      // Чистий профіт: 41 940 - 1 304 000 = -1 262 060 грн (-126 206 000 коп)
+      expect(res.body.profit.uah).toBe(-1262060);
+      expect(res.body.profit.kopiykas).toBe(-126206000);
+      expect(res.body.netProfit.uah).toBe(-1262060);
+      // unassignedChildren не повертається
+      expect(res.body.unassignedChildren).toBeUndefined();
+      // Перевірка розмежування кімнат
+      expect(res.body.rooms.total).toBe(20);
+      expect(res.body.rooms.occupied).toBe(6);
+      expect(res.body.rooms.vacant).toBe(14);
+    });
+
+    test('розрахунок загального профіту з кастомним attendanceRate=1 в query', async () => {
+      const res = await request(app)
+        .get(`${BASE}/profit?attendanceRate=1`)
+        .set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.income.meal.uah).toBe(16800);
+      expect(res.body.income.total.uah).toBe(45300);
+      expect(res.body.profit.uah).toBe(-1258700);
+    });
+
+    test('невалідний attendanceRate в query для загального профіту -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .get(`${BASE}/profit?attendanceRate=-0.5`)
+        .set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    test('враховує додаткових помічників у штаті, нараховуючи їм базову зарплату', async () => {
+      analyticsRepository.countActiveStaffByType.mockResolvedValueOnce({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 1,
+        ASSISTANT: 3, // 1 група -> 2 вільних помічники по 20 000 грн = +40 000 грн
+      });
+
+      const res = await request(app)
+        .get(`${BASE}/profit`)
+        .set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.assistantsCount).toBe(3);
+      // 20 000 (1-ша група) + 40 000 (2 вільні) = 60 000 грн
+      expect(res.body.expenses.assistantsSalary.uah).toBe(60000);
     });
   });
 
@@ -328,6 +410,20 @@ describe('Analytics API (Supertest)', () => {
 
       expect(res.status).toBe(StatusCodes.OK);
       expect(res.body.recommended.totalAdmitted).toBe(50);
+    });
+
+    test('запит одночасно з targetChildrenCount та віковими ключами повертає попередження -> 200 OK', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 100, 2: 12, 3: 12 });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.requestedDemand.warning).toContain(
+        'Параметр targetChildrenCount було проігноровано'
+      );
+      expect(res.body.requestedDemand.totalChildren).toBe(24);
+      expect(res.body.recommended.totalAdmitted).toBe(24);
     });
   });
 });

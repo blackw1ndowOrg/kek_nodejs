@@ -20,6 +20,7 @@ describe('AnalyticsController', () => {
     mockReq = {
       params: {},
       body: {},
+      query: {},
     };
     mockRes = {
       status: jest.fn().mockReturnThis(),
@@ -39,7 +40,7 @@ describe('AnalyticsController', () => {
 
       await controller.getGroupProfit(mockReq, mockRes);
 
-      expect(mockService.getGroupProfit).toHaveBeenCalledWith(5);
+      expect(mockService.getGroupProfit).toHaveBeenCalledWith(5, mockReq.query);
       expect(mockRes.status).toHaveBeenCalledWith(StatusCodes.OK);
       expect(mockRes.json).toHaveBeenCalledWith(profitData);
     });
@@ -52,7 +53,7 @@ describe('AnalyticsController', () => {
 
       await controller.getTotalProfit(mockReq, mockRes);
 
-      expect(mockService.getTotalProfit).toHaveBeenCalled();
+      expect(mockService.getTotalProfit).toHaveBeenCalledWith(mockReq.query);
       expect(mockRes.status).toHaveBeenCalledWith(StatusCodes.OK);
       expect(mockRes.json).toHaveBeenCalledWith(totalData);
     });

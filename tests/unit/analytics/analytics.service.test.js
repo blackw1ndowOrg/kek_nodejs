@@ -8,7 +8,7 @@ const {
   DEFAULT_MANAGERS_COUNT,
   DEFAULT_TOTAL_ROOMS_COUNT,
 } = require('../../../src/modules/analytics/analytics.service');
-const { NotFoundError } = require('../../../src/errors/AppError');
+const { NotFoundError, BadRequestError } = require('../../../src/errors/AppError');
 
 describe('AnalyticsService', () => {
   let mockRepo;
@@ -35,6 +35,7 @@ describe('AnalyticsService', () => {
       findGroupById: jest.fn(),
       findAllActiveChildren: jest.fn(),
       findAllGroupsWithActiveChildren: jest.fn(),
+      countActiveStaffByType: jest.fn().mockResolvedValue(null),
     };
     mockSettings = {
       get: jest.fn((key) => DEFAULT_SETTINGS[key]),
@@ -54,8 +55,6 @@ describe('AnalyticsService', () => {
       const money = toMoney(1500000);
       expect(money).toEqual({
         uah: 15000,
-        hryvnias: 15000,
-        kopecks: 1500000,
         kopiykas: 1500000,
       });
     });
@@ -64,8 +63,6 @@ describe('AnalyticsService', () => {
       const money = toMoney(0);
       expect(money).toEqual({
         uah: 0,
-        hryvnias: 0,
-        kopecks: 0,
         kopiykas: 0,
       });
     });
@@ -74,14 +71,18 @@ describe('AnalyticsService', () => {
       const money = toMoney(-7000000);
       expect(money).toEqual({
         uah: -70000,
-        hryvnias: -70000,
-        kopecks: -7000000,
         kopiykas: -7000000,
       });
     });
   });
 
   describe('getGroupProfit', () => {
+    test('викидає BadRequestError якщо groupId не є валідним додатним цілим числом', async () => {
+      await expect(service.getGroupProfit('invalid')).rejects.toThrow(BadRequestError);
+      await expect(service.getGroupProfit(-5)).rejects.toThrow(BadRequestError);
+      await expect(service.getGroupProfit(0)).rejects.toThrow(BadRequestError);
+    });
+
     test('викидає NotFoundError якщо групу не знайдено', async () => {
       mockRepo.findGroupById.mockResolvedValue(null);
 
@@ -201,6 +202,44 @@ describe('AnalyticsService', () => {
       expect(res.expenses.roomRent.uah).toBe(50000);
       expect(res.expenses.roomRent.kopiykas).toBe(5000000);
     });
+
+    test('враховує дохід від харчування за віком групи та коефіцієнт відвідуваності', async () => {
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 4,
+        name: 'Чомусики',
+        age: 3,
+        roomId: 7,
+        room: { id: 7, name: 'Кімната 7', monthlyCost: 5000000 },
+        children: [
+          { id: 1, discountPercent: 0 },
+          { id: 2, discountPercent: 10 },
+        ],
+      });
+
+      // За замовчуванням attendanceRate = 0.8:
+      const res = await service.getGroupProfit(4);
+
+      expect(res.age).toBe(3);
+      expect(res.childrenCount).toBe(2);
+      // Навчання: 15 000 + 13 500 = 28 500 грн
+      expect(res.tuitionIncome.uah).toBe(28500);
+      // Харчування 3-річок (80% відвідуваність): (400 * 21 * 0.8) = 6 720 грн на дитину * 2 = 13 440 грн
+      expect(res.mealIncome.uah).toBe(13440);
+      expect(res.mealIncome.kopiykas).toBe(1344000);
+      // Сумарний дохід: 28 500 + 13 440 = 41 940 грн
+      expect(res.totalIncome.uah).toBe(41940);
+      expect(res.income.total.uah).toBe(41940);
+      // Витрати: вихователь 4 000 + помічник 20 000 + оренда 50 000 = 74 000 грн
+      expect(res.expenses.total.uah).toBe(74000);
+      // Профіт: 41 940 - 74 000 = -32 060 грн
+      expect(res.profit.uah).toBe(-32060);
+
+      // При передачі attendanceRate = 1.0 (100%):
+      const resFull = await service.getGroupProfit(4, { attendanceRate: 1 });
+      expect(resFull.mealIncome.uah).toBe(16800);
+      expect(resFull.totalIncome.uah).toBe(45300);
+      expect(resFull.profit.uah).toBe(-28700);
+    });
   });
 
   describe('getTotalProfit', () => {
@@ -292,12 +331,15 @@ describe('AnalyticsService', () => {
 
       const res = await service.getTotalProfit();
 
-      expect(res.activeChildrenCount).toBe(25);
+      expect(res.activeChildrenCount).toBe(24);
+      expect(res.assignedChildrenCount).toBe(24);
       expect(res.groupsCount).toBe(2);
+      expect(res.educatorsCount).toBe(2);
+      expect(res.assistantsCount).toBe(2);
 
-      // Дохід
-      expect(res.income.tuition.uah).toBe(360000);
-      expect(res.income.tuition.kopiykas).toBe(36000000);
+      // Дохід від навчання 24 дітей у групах
+      expect(res.income.tuition.uah).toBe(348000);
+      expect(res.income.tuition.kopiykas).toBe(34800000);
 
       // Витрати:
       // Вихователі: 20 000 + 34 000 = 54 000 грн (5 400 000 коп)
@@ -318,20 +360,35 @@ describe('AnalyticsService', () => {
       expect(res.expenses.total.uah).toBe(1380000);
       expect(res.expenses.total.kopiykas).toBe(138000000);
 
-      // Чистий профіт: 360 000 - 1 380 000 = -1 020 000 грн (-102 000 000 коп)
-      expect(res.profit.uah).toBe(-1020000);
-      expect(res.profit.kopiykas).toBe(-102000000);
+      // Чистий профіт: 348 000 - 1 380 000 = -1 032 000 грн (-103 200 000 коп)
+      expect(res.profit.uah).toBe(-1032000);
+      expect(res.profit.kopiykas).toBe(-103200000);
 
       // Перевірка списку груп groups
       expect(res.groups).toHaveLength(2);
       expect(res.groups[0]).toEqual({
         groupId: 1,
         groupName: 'Сонечко',
+        age: undefined,
         childrenCount: 10,
+        tuitionIncome: toMoney(15000000),
+        mealIncome: toMoney(0),
+        totalIncome: toMoney(15000000),
         income: toMoney(15000000),
         expenses: toMoney(9000000), // 20k + 20k + 50k = 90k
         profit: toMoney(6000000), // 150k - 90k = 60k
       });
+      // unassignedChildren не повертається
+      expect(res.unassignedChildren).toBeUndefined();
+      // Перевірка розмежування кімнат
+      expect(res.rooms.total).toBe(20);
+      expect(res.rooms.occupied).toBe(7); // 2 групи + 5 гуртків
+      expect(res.rooms.vacant).toBe(13);
+      expect(res.rooms.cost.operating.uah).toBe(350000);
+      expect(res.rooms.cost.idle.uah).toBe(650000);
+      expect(res.rooms.cost.total.uah).toBe(1000000);
+      expect(res.rooms.cost.idle.uah).toBe(650000);
+      expect(res.rooms.cost.total.uah).toBe(1000000);
     });
 
     test('getTotalProfit використовує defaultRoomCost якщо кімната в групі не задана', async () => {
@@ -346,6 +403,68 @@ describe('AnalyticsService', () => {
       ]);
       const res = await service.getTotalProfit();
       expect(res.groups[0].expenses.uah).toBe(70000); // 0 + 20000 + 50000
+    });
+
+    test('враховує фактичну кількість персоналу з таблиці Staff у БД через countActiveStaffByType', async () => {
+      mockRepo.findAllActiveChildren.mockResolvedValue([]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([]);
+      mockRepo.countActiveStaffByType = jest.fn().mockResolvedValue({
+        CLUB_TEACHER: 3, // 3 замість 5
+        MANAGER: 2, // 2 замість 1
+        EDUCATOR: 0,
+        ASSISTANT: 0,
+      });
+
+      const res = await service.getTotalProfit();
+
+      expect(res.clubTeachersCount).toBe(3);
+      expect(res.managersCount).toBe(2);
+      // 3 викладачі * 40 000 грн = 120 000 грн
+      expect(res.expenses.clubTeachersSalary.uah).toBe(120000);
+      // 2 менеджери * 80 000 грн = 160 000 грн
+      expect(res.expenses.managerSalary.uah).toBe(160000);
+    });
+
+    test('нараховує базову ставку для вільних помічників якщо assistantsCount > groups.length', async () => {
+      mockRepo.findAllActiveChildren.mockResolvedValue([]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
+        {
+          id: 1,
+          name: 'Сонечко',
+          room: null,
+          children: [],
+        },
+      ]);
+      mockRepo.countActiveStaffByType = jest.fn().mockResolvedValue({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 1,
+        ASSISTANT: 3, // 3 помічники на 1 групу -> 2 вільних помічники
+      });
+
+      const res = await service.getTotalProfit();
+
+      expect(res.assistantsCount).toBe(3);
+      expect(res.groupsCount).toBe(1);
+      // 1 помічник у групі (0 дітей: 20 000 грн) + 2 вільних помічники по 20 000 грн = 60 000 грн
+      expect(res.expenses.assistantsSalary.uah).toBe(60000);
+      expect(res.expenses.assistantsSalary.kopiykas).toBe(6000000);
+    });
+
+    test('використовує дефолтні значення якщо countActiveStaffByType повертає неповний об’єкт', async () => {
+      mockRepo.findAllActiveChildren.mockResolvedValue([]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([]);
+      mockRepo.countActiveStaffByType = jest.fn().mockResolvedValue({
+        CLUB_TEACHER: 3,
+        // MANAGER, EDUCATOR, ASSISTANT відсутні
+      });
+
+      const res = await service.getTotalProfit();
+
+      expect(res.clubTeachersCount).toBe(3);
+      expect(res.managersCount).toBe(DEFAULT_MANAGERS_COUNT);
+      expect(res.educatorsCount).toBe(0);
+      expect(res.assistantsCount).toBe(0);
     });
 
     test('використовує змінені налаштування з settingsService', async () => {
@@ -462,6 +581,12 @@ describe('AnalyticsService', () => {
 
       expect(res.recommended).toBeDefined();
       expect(res.recommended.totalAdmitted).toBe(24);
+    });
+
+    test('успішно виконується без аргументів із дефолтним попитом', async () => {
+      const res = await service.calculateOptimalForecast();
+      expect(res.requestedDemand.totalChildren).toBe(0);
+      expect(res.recommended.groupsCount).toBe(0);
     });
   });
 

@@ -1,5 +1,5 @@
-const { NotFoundError } = require('../../errors/AppError');
-const { tuitionMonthly } = require('../../domain/pricing');
+const { NotFoundError, BadRequestError } = require('../../errors/AppError');
+const { tuitionMonthly, mealMonthly } = require('../../domain/pricing');
 const {
   educatorSalary,
   assistantSalary,
@@ -14,6 +14,8 @@ const { analyticsRepository } = require('./analytics.repository');
 const DEFAULT_CLUB_TEACHERS_COUNT = 5;
 const DEFAULT_MANAGERS_COUNT = 1;
 const DEFAULT_TOTAL_ROOMS_COUNT = 20;
+const DEFAULT_CLUB_ROOMS_COUNT = 5;
+const DEFAULT_WORKING_DAYS = 21;
 
 class AnalyticsService {
   constructor(repository = analyticsRepository, settings = settingsService) {
@@ -23,18 +25,25 @@ class AnalyticsService {
 
   /**
    * Розрахунок профіту окремої групи:
-   * - Дохід: сума щомісячної оплати за навчання всіх активних дітей групи з урахуванням пільг
+   * - Дохід: сума щомісячної оплати за навчання та харчування за віком групи для всіх активних дітей
    * - Витрати: зарплата вихователя (за кількістю дітей) + зарплата помічника + оренда закріпленої кімнати (50 000 грн)
    * - Профіт: дохід - витрати
    *
-   * @param {number} groupId
+   * @param {number|string} groupId
+   * @param {Object} [query={}]
    */
-  async getGroupProfit(groupId) {
-    const group = await this.repository.findGroupById(groupId);
+  async getGroupProfit(groupId, query = {}) {
+    const id = Number(groupId);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new BadRequestError('Group ID must be a positive integer');
+    }
+
+    const group = await this.repository.findGroupById(id);
     if (!group) {
       throw new NotFoundError('Групу не знайдено');
     }
 
+    const attendanceRate = query.attendanceRate !== undefined ? Number(query.attendanceRate) : 0.8;
     const tuition = this.settings.get('TUITION_MONTHLY');
     const discountLevels = this.settings.get('DISCOUNT_LEVELS');
     const educatorRate = this.settings.get('EDUCATOR_PER_CHILD');
@@ -43,6 +52,9 @@ class AnalyticsService {
     const assistantExtra = this.settings.get('ASSISTANT_EXTRA_PAY');
     const threshold = this.settings.get('GROUP_EXTRA_PAY_THRESHOLD');
     const defaultRoomCost = this.settings.get('ROOM_MONTHLY_COST');
+    const mealBase = this.settings.get('MEAL_BASE_PER_DAY');
+    const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
+    const workingDays = DEFAULT_WORKING_DAYS;
 
     const activeChildren = group.children;
     const childrenCount = activeChildren.length;
@@ -51,27 +63,29 @@ class AnalyticsService {
     for (const child of activeChildren) {
       tuitionIncome += tuitionMonthly(child.discountPercent, tuition, discountLevels);
     }
+    const fullMonthMeal = group.age ? mealMonthly(group.age, workingDays, mealBase, mealExtra) : 0;
+    const mealPerChild = Math.round(fullMonthMeal * attendanceRate);
+    const mealIncome = childrenCount * mealPerChild;
+    const totalIncome = tuitionIncome + mealIncome;
 
     const educator = educatorSalary(childrenCount, educatorRate, educatorExtra, threshold);
     const assistant = assistantSalary(childrenCount, assistantBase, assistantExtra, threshold);
     const roomCost = group.room ? group.room.monthlyCost : defaultRoomCost;
 
     const totalExpenses = educator + assistant + roomCost;
-    const profit = tuitionIncome - totalExpenses;
+    const profit = totalIncome - totalExpenses;
 
     const incomeBreakdown = {
       tuition: toMoney(tuitionIncome),
-      total: toMoney(tuitionIncome),
-      ...toMoney(tuitionIncome),
+      meal: toMoney(mealIncome),
+      total: toMoney(totalIncome),
     };
 
     const expensesBreakdown = {
       educatorSalary: toMoney(educator),
       assistantSalary: toMoney(assistant),
       roomRent: toMoney(roomCost),
-      roomCost: toMoney(roomCost),
       total: toMoney(totalExpenses),
-      ...toMoney(totalExpenses),
     };
 
     const profitMoney = toMoney(profit);
@@ -79,38 +93,37 @@ class AnalyticsService {
     return {
       groupId: group.id,
       groupName: group.name,
+      age: group.age,
       childrenCount,
       room: {
         id: group.room ? group.room.id : group.roomId,
         name: group.room ? group.room.name : null,
         cost: toMoney(roomCost),
       },
+      tuitionIncome: toMoney(tuitionIncome),
+      mealIncome: toMoney(mealIncome),
+      totalIncome: toMoney(totalIncome),
       income: incomeBreakdown,
       expenses: expensesBreakdown,
       profit: profitMoney,
       breakdown: {
-        income: {
-          tuition: toMoney(tuitionIncome),
-          total: toMoney(tuitionIncome),
-        },
-        expenses: {
-          educatorSalary: toMoney(educator),
-          assistantSalary: toMoney(assistant),
-          roomRent: toMoney(roomCost),
-          total: toMoney(totalExpenses),
-        },
+        income: incomeBreakdown,
+        expenses: expensesBreakdown,
       },
     };
   }
 
   /**
    * Розрахунок загального профіту всього садка:
-   * - Загальний дохід: сума оплат за навчання всіх активних дітей у садку
-   * - Загальні витрати: зарплати всіх вихователів + помічників + 5 викладачів гуртків по 40 000 грн
-   *   + менеджер 80 000 грн + оренда всіх 20 кімнат садка по 50 000 грн (1 000 000 грн)
+   * - Доходи: сума навчання та харчування дітей, зарахованих до груп
+   * - Витрати: фактичні зарплати вихователів + помічників + викладачі гуртків
+   *   + менеджери + оренда всіх 20 кімнат (з розмежуванням на операційні та простій)
    * - Чистий профіт: загальний дохід - загальні витрати
+   *
+   * @param {Object} [query={}]
    */
-  async getTotalProfit() {
+  async getTotalProfit(query = {}) {
+    const attendanceRate = query.attendanceRate !== undefined ? Number(query.attendanceRate) : 0.8;
     const tuition = this.settings.get('TUITION_MONTHLY');
     const discountLevels = this.settings.get('DISCOUNT_LEVELS');
     const educatorRate = this.settings.get('EDUCATOR_PER_CHILD');
@@ -122,64 +135,103 @@ class AnalyticsService {
     const mgrSalary = this.settings.get('MANAGER_SALARY');
     const roomCostSetting = this.settings.get('ROOM_MONTHLY_COST');
     const roomsCountSetting = this.settings.get('DEFAULT_ROOMS_COUNT');
-
-    const activeChildren = await this.repository.findAllActiveChildren();
-    let totalTuitionIncome = 0;
-    for (const child of activeChildren) {
-      totalTuitionIncome += tuitionMonthly(child.discountPercent, tuition, discountLevels);
-    }
+    const mealBase = this.settings.get('MEAL_BASE_PER_DAY');
+    const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
+    const workingDays = DEFAULT_WORKING_DAYS;
+    const defaultRoomCost = roomCostSetting;
+    const roomsCount = roomsCountSetting;
 
     const groups = await this.repository.findAllGroupsWithActiveChildren();
     let totalEducatorsSalary = 0;
     let totalAssistantsSalary = 0;
-
-    const defaultRoomCost = roomCostSetting;
+    let groupsTuitionIncome = 0;
+    let totalMealIncome = 0;
+    let totalOccupiedGroupRoomsRent = 0;
+    let totalAssignedChildrenCount = 0;
 
     const groupsBreakdown = groups.map((g) => {
       const activeGroupChildren = g.children;
       const count = activeGroupChildren.length;
+      totalAssignedChildrenCount += count;
       const educator = educatorSalary(count, educatorRate, educatorExtra, threshold);
       const assistant = assistantSalary(count, assistantBase, assistantExtra, threshold);
       const roomCost = g.room ? g.room.monthlyCost : defaultRoomCost;
 
       totalEducatorsSalary += educator;
       totalAssistantsSalary += assistant;
+      totalOccupiedGroupRoomsRent += roomCost;
 
       let gTuition = 0;
       for (const child of activeGroupChildren) {
         gTuition += tuitionMonthly(child.discountPercent, tuition, discountLevels);
       }
+      const fullMonthMeal = g.age ? mealMonthly(g.age, workingDays, mealBase, mealExtra) : 0;
+      const gMealPerChild = Math.round(fullMonthMeal * attendanceRate);
+      const gMeal = count * gMealPerChild;
+      const gTotalIncome = gTuition + gMeal;
       const gExpenses = educator + assistant + roomCost;
+
+      groupsTuitionIncome += gTuition;
+      totalMealIncome += gMeal;
 
       return {
         groupId: g.id,
         groupName: g.name,
+        age: g.age,
         childrenCount: count,
-        income: toMoney(gTuition),
+        tuitionIncome: toMoney(gTuition),
+        mealIncome: toMoney(gMeal),
+        totalIncome: toMoney(gTotalIncome),
+        income: toMoney(gTotalIncome),
         expenses: toMoney(gExpenses),
-        profit: toMoney(gTuition - gExpenses),
+        profit: toMoney(gTotalIncome - gExpenses),
       };
     });
 
-    const clubTeachersCount = DEFAULT_CLUB_TEACHERS_COUNT;
+    const totalTuitionIncome = groupsTuitionIncome;
+    const totalIncome = totalTuitionIncome + totalMealIncome;
+
+    let clubTeachersCount = DEFAULT_CLUB_TEACHERS_COUNT;
+    let managersCount = DEFAULT_MANAGERS_COUNT;
+    let educatorsCount = groups.length;
+    let assistantsCount = groups.length;
+
+    const staffCounts = await this.repository.countActiveStaffByType();
+    if (staffCounts) {
+      clubTeachersCount = staffCounts.CLUB_TEACHER ?? clubTeachersCount;
+      managersCount = staffCounts.MANAGER ?? managersCount;
+      educatorsCount = staffCounts.EDUCATOR ?? educatorsCount;
+      assistantsCount = staffCounts.ASSISTANT ?? assistantsCount;
+    }
+
+    if (assistantsCount > groups.length) {
+      totalAssistantsSalary += (assistantsCount - groups.length) * assistantBase;
+    }
+
     const totalClubTeachersSalary = clubTeachersCount * clubTeacherSalary(clubSalary);
-
-    const managersCount = DEFAULT_MANAGERS_COUNT;
     const totalManagerSalary = managersCount * managerSalary(mgrSalary);
-
     const totalStaffSalaries =
       totalEducatorsSalary + totalAssistantsSalary + totalClubTeachersSalary + totalManagerSalary;
 
-    const roomsCount = roomsCountSetting;
+    const occupiedGroupRooms = groups.length;
+    const occupiedClubRooms = Math.min(
+      DEFAULT_CLUB_ROOMS_COUNT,
+      Math.max(0, roomsCount - occupiedGroupRooms)
+    );
+    const occupiedRoomsCount = occupiedGroupRooms + occupiedClubRooms;
+    const operatingRoomsRent = totalOccupiedGroupRoomsRent + occupiedClubRooms * defaultRoomCost;
     const totalRoomsRent = roomsCount * defaultRoomCost;
+    const vacantRoomsCount = Math.max(0, roomsCount - occupiedRoomsCount);
+    const idleRoomsRent = Math.max(0, totalRoomsRent - operatingRoomsRent);
 
     const totalExpenses = totalStaffSalaries + totalRoomsRent;
-    const totalProfit = totalTuitionIncome - totalExpenses;
+    const totalProfit = totalIncome - totalExpenses;
+    const profitMoney = toMoney(totalProfit);
 
     const incomeBreakdown = {
       tuition: toMoney(totalTuitionIncome),
-      total: toMoney(totalTuitionIncome),
-      ...toMoney(totalTuitionIncome),
+      meal: toMoney(totalMealIncome),
+      total: toMoney(totalIncome),
     };
 
     const expensesBreakdown = {
@@ -188,19 +240,19 @@ class AnalyticsService {
       clubTeachersSalary: toMoney(totalClubTeachersSalary),
       managerSalary: toMoney(totalManagerSalary),
       staffSalaries: toMoney(totalStaffSalaries),
-      allStaffSalaries: toMoney(totalStaffSalaries),
       roomsRent: toMoney(totalRoomsRent),
-      roomsCost: toMoney(totalRoomsRent),
+      operatingRoomsRent: toMoney(operatingRoomsRent),
+      idleRoomsRent: toMoney(idleRoomsRent),
       total: toMoney(totalExpenses),
-      ...toMoney(totalExpenses),
     };
 
-    const profitMoney = toMoney(totalProfit);
-
     return {
-      activeChildrenCount: activeChildren.length,
+      activeChildrenCount: totalAssignedChildrenCount,
+      assignedChildrenCount: totalAssignedChildrenCount,
       groupsCount: groups.length,
       roomsCount,
+      educatorsCount,
+      assistantsCount,
       clubTeachersCount,
       managersCount,
       income: incomeBreakdown,
@@ -210,7 +262,8 @@ class AnalyticsService {
       breakdown: {
         income: {
           tuition: toMoney(totalTuitionIncome),
-          total: toMoney(totalTuitionIncome),
+          meal: toMoney(totalMealIncome),
+          total: toMoney(totalIncome),
         },
         expenses: {
           educatorsSalary: toMoney(totalEducatorsSalary),
@@ -219,7 +272,19 @@ class AnalyticsService {
           managerSalary: toMoney(totalManagerSalary),
           staffSalaries: toMoney(totalStaffSalaries),
           roomsRent: toMoney(totalRoomsRent),
+          operatingRoomsRent: toMoney(operatingRoomsRent),
+          idleRoomsRent: toMoney(idleRoomsRent),
           total: toMoney(totalExpenses),
+        },
+      },
+      rooms: {
+        total: roomsCount,
+        occupied: occupiedRoomsCount,
+        vacant: vacantRoomsCount,
+        cost: {
+          total: toMoney(totalRoomsRent),
+          operating: toMoney(operatingRoomsRent),
+          idle: toMoney(idleRoomsRent),
         },
       },
       groups: groupsBreakdown,
@@ -320,11 +385,7 @@ function formatOptimalForecastMoney(rawResult) {
   const strategies = {};
   if (rawResult.strategies) {
     for (const [code, strat] of Object.entries(rawResult.strategies)) {
-      const formatted = formatVariantFinancials(strat);
-      strategies[code] = formatted;
-      if (strat.strategyCode && strat.strategyCode !== code) {
-        strategies[strat.strategyCode] = formatted;
-      }
+      strategies[code] = formatVariantFinancials(strat);
     }
   }
 
