@@ -44,8 +44,8 @@ describe('Domain: forecast (src/domain/forecast.js)', () => {
       expect(LESSONS_PER_WEEK_PER_GROUP).toBe(3);
       expect(TEACHER_WORK_HOURS_PER_DAY).toBe(8);
       expect(WORK_DAYS_PER_WEEK).toBe(5);
-      expect(TEACHER_WEEKLY_CAPACITY).toBe(40);
-      expect(MAX_GROUPS_PER_TEACHER).toBe(13);
+      expect(TEACHER_WEEKLY_CAPACITY).toBe(45);
+      expect(MAX_GROUPS_PER_TEACHER).toBe(15);
       expect(DEFAULT_WORKING_DAYS).toBe(21);
     });
   });
@@ -163,25 +163,26 @@ describe('Domain: forecast (src/domain/forecast.js)', () => {
       expect(calculateClubTeachersCount(0)).toBe(0);
     });
 
-    test('від 1 до 13 груп -> 1 комплект (5 викладачів)', () => {
+    test('від 1 до 15 груп -> 1 комплект (5 викладачів)', () => {
       expect(calculateClubTeachersCount(1)).toBe(5);
       expect(calculateClubTeachersCount(6)).toBe(5);
       expect(calculateClubTeachersCount(13)).toBe(5);
+      expect(calculateClubTeachersCount(15)).toBe(5);
     });
 
-    test('від 14 до 26 груп -> 2 комплекти (10 викладачів)', () => {
-      expect(calculateClubTeachersCount(14)).toBe(10);
+    test('від 16 до 30 груп -> 2 комплекти (10 викладачів)', () => {
+      expect(calculateClubTeachersCount(16)).toBe(10);
       expect(calculateClubTeachersCount(20)).toBe(10);
-      expect(calculateClubTeachersCount(26)).toBe(10);
+      expect(calculateClubTeachersCount(30)).toBe(10);
     });
 
-    test('від 27 до 39 груп -> 3 комплекти (15 викладачів)', () => {
-      expect(calculateClubTeachersCount(27)).toBe(15);
-      expect(calculateClubTeachersCount(39)).toBe(15);
+    test('від 31 до 45 груп -> 3 комплекти (15 викладачів)', () => {
+      expect(calculateClubTeachersCount(31)).toBe(15);
+      expect(calculateClubTeachersCount(45)).toBe(15);
     });
 
-    test('40 груп -> 4 комплекти (20 викладачів)', () => {
-      expect(calculateClubTeachersCount(40)).toBe(20);
+    test('46 груп -> 4 комплекти (20 викладачів)', () => {
+      expect(calculateClubTeachersCount(46)).toBe(20);
     });
 
     test('невалідні значення викидають BadRequestError з кодом VALIDATION_ERROR', () => {
@@ -629,12 +630,12 @@ describe('Domain: forecast (src/domain/forecast.js)', () => {
       expect(res.marginalEconomics.marginalChild.marginalCost).toBeGreaterThan(200000); // більше ніж просто 2 000 грн вихователю
     });
 
-    test('clubTeachersStatus: попередження при 100% завантаженні комплекту викладачів (13 груп)', () => {
-      // 13 груп по 20 дітей = 260 дітей
-      const demand = { 2: 60, 3: 60, 4: 70, 5: 70 };
+    test('clubTeachersStatus: попередження при 100% завантаженні комплекту викладачів (15 груп)', () => {
+      // 15 груп по 20 дітей = 300 дітей
+      const demand = { 2: 75, 3: 75, 4: 75, 5: 75 };
       const res = optimizeKindergartenCapacity(demand);
 
-      if (res.recommended.groupsCount === 13) {
+      if (res.recommended.groupsCount === 15) {
         expect(res.marginalEconomics.clubTeachersStatus.freeGroupCapacity).toBe(0);
         expect(res.marginalEconomics.clubTeachersStatus.warning).toContain(
           'Викладачі гуртків завантажені на 100%'
@@ -735,7 +736,7 @@ describe('Domain: forecast (src/domain/forecast.js)', () => {
 
       // Конкуренція за слоти гуртків
       const resClub = optimizeKindergartenCapacity(
-        { 2: 20 * 6, 3: 20 * 6, 4: 1, 5: 1 }, // 12 груп (залишився 1 слот гуртка на 2 вікові групи)
+        { 2: 20 * 7, 3: 20 * 7, 4: 1, 5: 1 }, // 14 груп (залишився 1 слот гуртка на 2 вікові групи при місткості 15)
         { totalRoomsCount: 20, clubRoomsCount: 5 }
       );
       const adviceClub = resClub.marginalEconomics.waitlistAdvice.find(

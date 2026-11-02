@@ -13,13 +13,14 @@ const DEFAULT_CLUB_TEACHERS = 5;
 const DEFAULT_MANAGERS = 1;
 const DEFAULT_EXTRA_PAY_THRESHOLD = 12;
 
-// Константи навчального розкладу гуртків
+// Константи навчального розкладу гуртків (новий графік: 4 слоти 09:00–12:00 + 5 слотів 14:00–17:30)
 const CLUB_SUBJECTS_COUNT = 5;
 const LESSONS_PER_WEEK_PER_GROUP = 3;
 const TEACHER_WORK_HOURS_PER_DAY = 8;
+const TEACHER_DAILY_LESSONS = 9; // 9 занять по 30 хв на день
 const WORK_DAYS_PER_WEEK = 5;
-const TEACHER_WEEKLY_CAPACITY = TEACHER_WORK_HOURS_PER_DAY * WORK_DAYS_PER_WEEK; // 40 занять на тиждень
-const MAX_GROUPS_PER_TEACHER = Math.floor(TEACHER_WEEKLY_CAPACITY / LESSONS_PER_WEEK_PER_GROUP); // 13 груп
+const TEACHER_WEEKLY_CAPACITY = TEACHER_DAILY_LESSONS * WORK_DAYS_PER_WEEK; // 45 занять на тиждень
+const MAX_GROUPS_PER_TEACHER = Math.floor(TEACHER_WEEKLY_CAPACITY / LESSONS_PER_WEEK_PER_GROUP); // 15 груп
 const DEFAULT_WORKING_DAYS = 21;
 const DEFAULT_ATTENDANCE_RATE = 0.8; // Коефіцієнт фактичної відвідуваності з урахуванням хвороб дітей (80%)
 
@@ -205,9 +206,9 @@ function distributeChildrenIntoGroups(
 
 /**
  * Розраховує необхідну кількість викладачів гуртків:
- * 1 викладач гуртка проводить до 8 занять на день (40 занять/тиждень).
+ * 1 викладач гуртка проводить до 9 занять на день (45 занять/тиждень).
  * Кожна група потребує 3 занять на тиждень кожного з 5 предметів.
- * Відтак 1 комплект із 5 викладачів (по 1 на предмет) покриває до 13 груп включно.
+ * Відтак 1 комплект із 5 викладачів (по 1 на предмет) покриває до 15 груп включно.
  *
  * @param {number} groupsCount
  * @returns {number}
@@ -1007,6 +1008,7 @@ module.exports = {
   CLUB_SUBJECTS_COUNT,
   LESSONS_PER_WEEK_PER_GROUP,
   TEACHER_WORK_HOURS_PER_DAY,
+  TEACHER_DAILY_LESSONS,
   WORK_DAYS_PER_WEEK,
   TEACHER_WEEKLY_CAPACITY,
   MAX_GROUPS_PER_TEACHER,
