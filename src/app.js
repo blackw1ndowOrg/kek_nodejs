@@ -12,6 +12,7 @@ const childrenRoutes = require('./modules/children/children.routes');
 const parentsRoutes = require('./modules/parents/parents.routes');
 const staffRoutes = require('./modules/staff/staff.routes');
 const groupsRoutes = require('./modules/groups/groups.routes');
+const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const clubsRoutes = require('./modules/clubs/clubs.routes');
 const scheduleRoutes = require('./modules/schedule/schedule.routes');
 
@@ -35,6 +36,7 @@ function createApp() {
   app.use('/api/v1/parents', parentsRoutes);
   app.use('/api/v1/staff', staffRoutes);
   app.use('/api/v1/groups', groupsRoutes);
+  app.use('/api/v1/analytics', analyticsRoutes);
   app.use('/api/v1/schedule', scheduleRoutes);
   app.use('/api/v1/clubs', clubsRoutes);
   app.use(notFound);

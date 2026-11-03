@@ -83,9 +83,9 @@ describe('ScheduleService', () => {
   describe('generate', () => {
     test('генерує розклад усіх груп без накладок кабінетів і зберігає його', async () => {
       const { repository, service } = createService();
-      await expect(service.generate()).resolves.toEqual({ groups: 4, clubs: 5, slots: 260 });
+      await expect(service.generate()).resolves.toEqual({ groups: 4, clubs: 5, slots: 280 });
       const [slots] = repository.replaceAll.mock.calls[0];
-      expect(slots).toHaveLength(4 * 5 * 13);
+      expect(slots).toHaveLength(4 * 5 * 14);
       expect(validateSchedule(slots)).toEqual([]);
     });
 
@@ -96,13 +96,34 @@ describe('ScheduleService', () => {
       expect(repository.replaceAll).toHaveBeenCalledWith([]);
     });
 
-    test('нестача гуртків для груп -> AppError 422, розклад не чіпається', async () => {
+    test('15 груп і 5 гуртків вміщаються без накладок', async () => {
       const { repository, service } = createService();
-      repository.findGroups.mockResolvedValueOnce([1, 2, 3, 4, 5, 6].map((id) => ({ id })));
+      repository.findGroups.mockResolvedValueOnce(
+        Array.from({ length: 15 }, (_, i) => ({ id: i + 1 }))
+      );
+      await expect(service.generate()).resolves.toEqual({ groups: 15, clubs: 5, slots: 1050 });
+      const [slots] = repository.replaceAll.mock.calls[0];
+      expect(validateSchedule(slots)).toEqual([]);
+    });
+
+    test('груп більше, ніж можна розвести за часом -> AppError 422, розклад не чіпається', async () => {
+      const { repository, service } = createService();
+      repository.findGroups.mockResolvedValueOnce(
+        Array.from({ length: 16 }, (_, i) => ({ id: i + 1 }))
+      );
       const promise = service.generate();
       await expect(promise).rejects.toBeInstanceOf(AppError);
       await expect(promise).rejects.toMatchObject({ statusCode: 422 });
-      await expect(promise).rejects.toThrow(/Груп \(6\) більше, ніж гуртків \(5\)/);
+      await expect(promise).rejects.toThrow(/Груп \(16\) більше, ніж можна розвести за часом/);
+      expect(repository.replaceAll).not.toHaveBeenCalled();
+    });
+
+    test('менше трьох гуртків -> AppError 422', async () => {
+      const { repository, service } = createService();
+      repository.findClubs.mockResolvedValueOnce([{ id: 11 }, { id: 12 }]);
+      const promise = service.generate();
+      await expect(promise).rejects.toMatchObject({ statusCode: 422 });
+      await expect(promise).rejects.toThrow(/щонайменше 3 гуртки/);
       expect(repository.replaceAll).not.toHaveBeenCalled();
     });
 
@@ -199,6 +220,31 @@ describe('ScheduleService', () => {
     test('початок пізніше за збережений кінець -> 409 INVALID_TIME', async () => {
       const { service } = createService();
       await expect(service.updateSlot(100, { startMinute: 600 })).rejects.toThrow('INVALID_TIME');
+    });
+
+    test('той самий гурток двічі за день в однієї групи -> 409 CLUB_REPEATED_IN_DAY', async () => {
+      const { repository, service } = createService();
+      const sameGroupClub12 = { ...LESSON, id: 201, clubId: 12, startMinute: 840, endMinute: 885 };
+      repository.findRelatedSlots.mockResolvedValueOnce([LESSON, NAP, sameGroupClub12]);
+      const promise = service.updateSlot(100, { clubId: 12 });
+      await expect(promise).rejects.toThrow(ConflictError);
+      await expect(promise).rejects.toThrow('CLUB_REPEATED_IN_DAY');
+      expect(repository.updateSlot).not.toHaveBeenCalled();
+    });
+
+    test('заняття поза періодами 09:00–12:00 / 14:00–17:45 -> 409 LESSON_OUT_OF_WINDOW', async () => {
+      const { repository, service } = createService();
+      const promise = service.updateSlot(100, { startMinute: 720, endMinute: 750 });
+      await expect(promise).rejects.toThrow(ConflictError);
+      await expect(promise).rejects.toThrow('LESSON_OUT_OF_WINDOW');
+      expect(repository.updateSlot).not.toHaveBeenCalled();
+    });
+
+    test('перенесення заняття на післяобідній слот дозволене', async () => {
+      const { repository, service } = createService();
+      const data = { startMinute: 885, endMinute: 915 };
+      await service.updateSlot(100, data);
+      expect(repository.updateSlot).toHaveBeenCalledWith(100, data);
     });
 
     test('чужі існуючі конфлікти не блокують правку', async () => {

@@ -91,13 +91,49 @@ describe('Schedule API (Supertest)', () => {
         .post(`${BASE}/generate`)
         .set('Authorization', tokenFor('ADMIN'));
       expect(res.status).toBe(StatusCodes.CREATED);
-      expect(res.body).toEqual({ groups: 4, clubs: 5, slots: 260 });
+      expect(res.body).toEqual({ groups: 4, clubs: 5, slots: 280 });
       const [slots] = scheduleRepository.replaceAll.mock.calls[0];
       expect(validateSchedule(slots)).toEqual([]);
     });
 
-    test('груп більше, ніж гуртків -> 422', async () => {
-      scheduleRepository.findGroups.mockResolvedValueOnce(ids(6));
+    test('15 груп і 5 гуртків: 201 і розклад без колізій', async () => {
+      scheduleRepository.findGroups.mockResolvedValueOnce(ids(15));
+      const res = await request(app)
+        .post(`${BASE}/generate`)
+        .set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.CREATED);
+      expect(res.body).toEqual({ groups: 15, clubs: 5, slots: 1050 });
+      const [slots] = scheduleRepository.replaceAll.mock.calls[0];
+      expect(validateSchedule(slots)).toEqual([]);
+    });
+
+    test('у кожної групи 3 заняття на день і по 3 рази кожен гурток за тиждень', async () => {
+      await request(app).post(`${BASE}/generate`).set('Authorization', tokenFor('ADMIN'));
+      const [slots] = scheduleRepository.replaceAll.mock.calls[0];
+      for (const { id: groupId } of ids(4)) {
+        const lessons = slots.filter((s) => s.groupId === groupId && s.activity === 'CLUB');
+        expect(lessons).toHaveLength(15);
+        for (let day = 1; day <= 5; day += 1) {
+          const clubIds = lessons.filter((s) => s.dayOfWeek === day).map((s) => s.clubId);
+          expect(new Set(clubIds).size).toBe(3);
+        }
+        for (const { id: clubId } of ids(5, 11)) {
+          expect(lessons.filter((s) => s.clubId === clubId)).toHaveLength(3);
+        }
+      }
+    });
+
+    test('груп більше, ніж можна розвести за часом (16 при 5 гуртках) -> 422', async () => {
+      scheduleRepository.findGroups.mockResolvedValueOnce(ids(16));
+      const res = await request(app)
+        .post(`${BASE}/generate`)
+        .set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(422);
+      expect(scheduleRepository.replaceAll).not.toHaveBeenCalled();
+    });
+
+    test('менше трьох гуртків -> 422', async () => {
+      scheduleRepository.findClubs.mockResolvedValueOnce(ids(2, 11));
       const res = await request(app)
         .post(`${BASE}/generate`)
         .set('Authorization', tokenFor('ADMIN'));
@@ -174,6 +210,33 @@ describe('Schedule API (Supertest)', () => {
     test('накладка зі сном тієї самої групи -> 409', async () => {
       const res = await patch({ startMinute: 800, endMinute: 845 });
       expect(res.status).toBe(StatusCodes.CONFLICT);
+    });
+
+    test('той самий гурток двічі за день у групи -> 409', async () => {
+      scheduleRepository.findRelatedSlots.mockResolvedValueOnce([
+        LESSON,
+        NAP,
+        { ...LESSON, id: 201, clubId: 12, startMinute: 840, endMinute: 885 },
+      ]);
+      const res = await patch({ clubId: 12 });
+      expect(res.status).toBe(StatusCodes.CONFLICT);
+      expect(res.body.error.code).toBe(ErrorCodes.CONFLICT);
+      expect(scheduleRepository.updateSlot).not.toHaveBeenCalled();
+    });
+
+    test('заняття поза періодами занять (12:00–12:30) -> 409', async () => {
+      const res = await patch({ startMinute: 720, endMinute: 750 });
+      expect(res.status).toBe(StatusCodes.CONFLICT);
+      expect(scheduleRepository.updateSlot).not.toHaveBeenCalled();
+    });
+
+    test('перенесення на післяобідній слот -> 200', async () => {
+      const res = await patch({ startMinute: 885, endMinute: 915 });
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(scheduleRepository.updateSlot).toHaveBeenCalledWith(100, {
+        startMinute: 885,
+        endMinute: 915,
+      });
     });
 
     test('слота немає -> 404', async () => {
