@@ -228,8 +228,8 @@ components:
           example: Петренко Максим Васильович
         birthDate:
           type: string
-          format: date
-          example: '2021-05-15'
+          format: date-time
+          example: '2021-05-15T00:00:00.000Z'
         notes:
           type: string
           nullable: true
@@ -246,9 +246,9 @@ components:
           example: false
         paidUntil:
           type: string
-          format: date
+          format: date-time
           nullable: true
-          example: '2026-11-30'
+          example: '2026-11-30T00:00:00.000Z'
         isActive:
           type: boolean
           example: true
@@ -514,9 +514,9 @@ components:
           example: 2150000
         paidUntil:
           type: string
-          format: date
+          format: date-time
           nullable: true
-          example: '2026-11-30'
+          example: '2026-11-30T00:00:00.000Z'
         isPaid:
           type: boolean
           example: true
@@ -544,8 +544,8 @@ components:
           example: UAH
         paidUntil:
           type: string
-          format: date
-          example: '2026-12-30'
+          format: date-time
+          example: '2026-12-30T00:00:00.000Z'
     Club:
       type: object
       properties:
@@ -647,6 +647,15 @@ components:
         clubId:
           type: integer
           example: 2
+    Money:
+      type: object
+      properties:
+        uah:
+          type: number
+          example: 3500.0
+        kopiykas:
+          type: integer
+          example: 350000
     GroupProfitResponse:
       type: object
       properties:
@@ -663,25 +672,18 @@ components:
           type: integer
           example: 15
         totalIncome:
-          type: number
-          description: Загальний дохід у гривнях
-          example: 350000.0
+          $ref: '#/components/schemas/Money'
         profit:
-          type: number
-          description: Чистий прибуток у гривнях
-          example: 120000.0
+          $ref: '#/components/schemas/Money'
     TotalProfitResponse:
       type: object
       properties:
         totalIncome:
-          type: number
-          example: 1200000.0
+          $ref: '#/components/schemas/Money'
         totalExpenses:
-          type: number
-          example: 850000.0
+          $ref: '#/components/schemas/Money'
         netProfit:
-          type: number
-          example: 350000.0
+          $ref: '#/components/schemas/Money'
     ForecastRequest:
       type: object
       properties:
@@ -846,8 +848,55 @@ paths:
                     type: string
                     example: TUITION_MONTHLY
                   value:
-                    type: integer
-                    example: 1500000
+                    oneOf:
+                      - type: integer
+                        example: 1500000
+                      - type: array
+                        items:
+                          type: integer
+                        example: [10, 20, 30]
+        '404':
+          description: Налаштування з таким ключем не знайдено
+    put:
+      summary: Оновлення значення налаштування через PUT (тільки ADMIN)
+      tags:
+        - Settings
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+          example: TUITION_MONTHLY
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingUpdate'
+      responses:
+        '200':
+          description: Налаштування успішно оновлено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type: string
+                    example: TUITION_MONTHLY
+                  value:
+                    oneOf:
+                      - type: integer
+                        example: 1600000
+                      - type: array
+                        items:
+                          type: integer
+                        example: [10, 20, 30]
+        '400':
+          description: Невалідне значення для налаштування
+        '403':
+          description: Недостатньо прав
         '404':
           description: Налаштування з таким ключем не знайдено
     patch:
@@ -879,8 +928,13 @@ paths:
                     type: string
                     example: TUITION_MONTHLY
                   value:
-                    type: integer
-                    example: 1600000
+                    oneOf:
+                      - type: integer
+                        example: 1600000
+                      - type: array
+                        items:
+                          type: integer
+                        example: [10, 20, 30]
         '400':
           description: Невалідне значення для налаштування
         '403':
@@ -1138,7 +1192,7 @@ paths:
             schema:
               $ref: '#/components/schemas/EnrollChildRequest'
       responses:
-        '200':
+        '204':
           description: Дитину успішно зараховано до групи
         '400':
           description: Вік дитини не відповідає віку групи
@@ -1585,7 +1639,7 @@ paths:
             schema:
               $ref: '#/components/schemas/PaymentRequest'
       responses:
-        '200':
+        '201':
           description: Оплату успішно проведено, оплачений період продовжено
           content:
             application/json:
