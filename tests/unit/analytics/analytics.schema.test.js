@@ -17,16 +17,24 @@ describe('Analytics Schema Validation', () => {
     });
 
     test('помилка при непостійному або нульовому ID', () => {
-      expect(() => groupProfitSchema.parse({ params: { id: 0 } })).toThrow();
-      expect(() => groupProfitSchema.parse({ params: { id: -5 } })).toThrow();
+      expect(() => groupProfitSchema.parse({ params: { id: 0 } })).toThrow(
+        /Group ID must be positive/i
+      );
+      expect(() => groupProfitSchema.parse({ params: { id: -5 } })).toThrow(
+        /Group ID must be positive/i
+      );
     });
 
     test('помилка при дробовому числі', () => {
-      expect(() => groupProfitSchema.parse({ params: { id: 3.14 } })).toThrow();
+      expect(() => groupProfitSchema.parse({ params: { id: 3.14 } })).toThrow(
+        /Group ID must be an integer/i
+      );
     });
 
-    test('помилка при нечисловому рядку', () => {
-      expect(() => groupProfitSchema.parse({ params: { id: 'invalid' } })).toThrow();
+    test('помилка при нечисловому рядку з власним повідомленням Zod 4', () => {
+      expect(() => groupProfitSchema.parse({ params: { id: 'invalid' } })).toThrow(
+        /Group ID must be a number/i
+      );
     });
 
     test('валідує опціональний attendanceRate у query', () => {
@@ -56,8 +64,18 @@ describe('Analytics Schema Validation', () => {
     });
 
     test('викидає помилку на невалідний attendanceRate (> 1 або від’ємний)', () => {
-      expect(() => totalProfitSchema.parse({ query: { attendanceRate: 1.2 } })).toThrow();
-      expect(() => totalProfitSchema.parse({ query: { attendanceRate: -0.1 } })).toThrow();
+      expect(() => totalProfitSchema.parse({ query: { attendanceRate: 1.2 } })).toThrow(
+        /attendanceRate cannot exceed 1/i
+      );
+      expect(() => totalProfitSchema.parse({ query: { attendanceRate: -0.1 } })).toThrow(
+        /attendanceRate must be positive/i
+      );
+    });
+
+    test('викидає помилку на нечисловий attendanceRate з власним повідомленням Zod 4', () => {
+      expect(() => totalProfitSchema.parse({ query: { attendanceRate: 'not-a-number' } })).toThrow(
+        /attendanceRate must be a number/i
+      );
     });
   });
 
@@ -97,10 +115,10 @@ describe('Analytics Schema Validation', () => {
       );
     });
 
-    test('викидає помилку якщо targetChildrenCount не є числом', () => {
+    test('викидає помилку якщо targetChildrenCount не є числом з власним повідомленням Zod 4', () => {
       expect(() =>
         forecastSchema.parse({ body: { targetChildrenCount: 'not-a-number' } })
-      ).toThrow();
+      ).toThrow(/Target children count must be a number/i);
     });
 
     test('порожнє тіло або відсутність тіла проходить валідацію за замовчуванням', () => {
@@ -145,21 +163,29 @@ describe('Analytics Schema Validation', () => {
       expect(parsed.body[5]).toBe(13);
     });
 
-    test('коерсить коректні строкові значення вікового попиту та валідує невалідні', () => {
+    test('коерсить коректні строкові значення вікового попиту та валідує невалідні з власним повідомленням Zod 4', () => {
       const parsed = forecastSchema.parse({ body: { 2: '21', 3: 20 } });
       expect(parsed.body[2]).toBe(21);
-      expect(() => forecastSchema.parse({ body: { 2: '   ' } })).toThrow();
-      expect(() => forecastSchema.parse({ body: { 2: 'not-a-number' } })).toThrow();
+      expect(() => forecastSchema.parse({ body: { 2: '   ' } })).toThrow(/Demand must be a number/i);
+      expect(() => forecastSchema.parse({ body: { 2: 'not-a-number' } })).toThrow(
+        /Demand must be a number/i
+      );
     });
 
     test('викидає помилку при від’ємному віковому попиті', () => {
-      expect(() => forecastSchema.parse({ body: { 2: -5 } })).toThrow();
+      expect(() => forecastSchema.parse({ body: { 2: -5 } })).toThrow(/Demand must be non-negative/i);
     });
 
     test('викидає помилку при невалідних attendanceRate та threshold', () => {
-      expect(() => forecastSchema.parse({ body: { attendanceRate: 1.5 } })).toThrow();
-      expect(() => forecastSchema.parse({ body: { attendanceRate: 0 } })).toThrow();
-      expect(() => forecastSchema.parse({ body: { attendanceRate: 'invalid' } })).toThrow();
+      expect(() => forecastSchema.parse({ body: { attendanceRate: 1.5 } })).toThrow(
+        /attendanceRate cannot exceed 1/i
+      );
+      expect(() => forecastSchema.parse({ body: { attendanceRate: 0 } })).toThrow(
+        /attendanceRate must be positive/i
+      );
+      expect(() => forecastSchema.parse({ body: { attendanceRate: 'invalid' } })).toThrow(
+        /attendanceRate must be a number/i
+      );
       expect(() => forecastSchema.parse({ body: { threshold: -1 } })).toThrow();
       expect(() => forecastSchema.parse({ body: { threshold: 'invalid' } })).toThrow();
     });

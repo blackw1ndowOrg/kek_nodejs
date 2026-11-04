@@ -1,5 +1,8 @@
 const { NotFoundError, BadRequestError } = require('../../errors/AppError');
-const { tuitionMonthly, mealMonthly } = require('../../domain/pricing');
+const {
+  mealMonthly,
+  calculateChildMonthlyTuition,
+} = require('../../domain/pricing');
 const {
   educatorSalary,
   assistantSalary,
@@ -46,6 +49,7 @@ class AnalyticsService {
     const attendanceRate = query.attendanceRate !== undefined ? Number(query.attendanceRate) : 0.8;
     const tuition = this.settings.get('TUITION_MONTHLY');
     const discountLevels = this.settings.get('DISCOUNT_LEVELS');
+    const yearlyDiscountPercent = this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12;
     const educatorRate = this.settings.get('EDUCATOR_PER_CHILD');
     const educatorExtra = this.settings.get('EDUCATOR_EXTRA_PAY');
     const assistantBase = this.settings.get('ASSISTANT_SALARY');
@@ -61,7 +65,13 @@ class AnalyticsService {
 
     let tuitionIncome = 0;
     for (const child of activeChildren) {
-      tuitionIncome += tuitionMonthly(child.discountPercent, tuition, discountLevels);
+      tuitionIncome += calculateChildMonthlyTuition(
+        child,
+        child.paymentPlan,
+        tuition,
+        discountLevels,
+        yearlyDiscountPercent
+      );
     }
     const fullMonthMeal = group.age ? mealMonthly(group.age, workingDays, mealBase, mealExtra) : 0;
     const mealPerChild = Math.round(fullMonthMeal * attendanceRate);
@@ -126,6 +136,7 @@ class AnalyticsService {
     const attendanceRate = query.attendanceRate !== undefined ? Number(query.attendanceRate) : 0.8;
     const tuition = this.settings.get('TUITION_MONTHLY');
     const discountLevels = this.settings.get('DISCOUNT_LEVELS');
+    const yearlyDiscountPercent = this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12;
     const educatorRate = this.settings.get('EDUCATOR_PER_CHILD');
     const educatorExtra = this.settings.get('EDUCATOR_EXTRA_PAY');
     const assistantBase = this.settings.get('ASSISTANT_SALARY');
@@ -163,7 +174,13 @@ class AnalyticsService {
 
       let gTuition = 0;
       for (const child of activeGroupChildren) {
-        gTuition += tuitionMonthly(child.discountPercent, tuition, discountLevels);
+        gTuition += calculateChildMonthlyTuition(
+          child,
+          child.paymentPlan,
+          tuition,
+          discountLevels,
+          yearlyDiscountPercent
+        );
       }
       const fullMonthMeal = g.age ? mealMonthly(g.age, workingDays, mealBase, mealExtra) : 0;
       const gMealPerChild = Math.round(fullMonthMeal * attendanceRate);
