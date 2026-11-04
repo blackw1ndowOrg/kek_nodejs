@@ -28,6 +28,7 @@ describe('AnalyticsService', () => {
     ROOM_MONTHLY_COST: 5000000,
     DEFAULT_ROOMS_COUNT: 20,
     MAX_CHILDREN_IN_GROUP: 20,
+    YEARLY_DISCOUNT_PERCENT: 12,
   };
 
   beforeEach(() => {
@@ -240,6 +241,34 @@ describe('AnalyticsService', () => {
       expect(resFull.totalIncome.uah).toBe(45300);
       expect(resFull.profit.uah).toBe(-28700);
     });
+
+    test('враховує річну знижку 12% для дітей з paymentPlan: YEARLY', async () => {
+      // 1 дитина без пільги, MONTHLY: 15 000 грн (1 500 000 коп)
+      // 1 дитина без пільги, YEARLY: 15 000 * 0.88 = 13 200 грн (1 320 000 коп)
+      // 1 дитина з пільгою 20%, YEARLY: 12 000 * 0.88 = 10 560 грн (1 056 000 коп)
+      // Разом навчання: 15 000 + 13 200 + 10 560 = 38 760 грн (3 876 000 коп)
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 5,
+        name: 'Розумники',
+        age: 4,
+        roomId: 8,
+        room: { id: 8, name: 'Кімната 8', monthlyCost: 5000000 },
+        children: [
+          { id: 1, discountPercent: 0, paymentPlan: 'MONTHLY' },
+          { id: 2, discountPercent: 0, paymentPlan: 'YEARLY' },
+          { id: 3, discountPercent: 20, paymentPlan: 'YEARLY' },
+        ],
+      });
+
+      const res = await service.getGroupProfit(5, { attendanceRate: 1 });
+
+      expect(res.childrenCount).toBe(3);
+      expect(res.tuitionIncome.uah).toBe(38760);
+      expect(res.tuitionIncome.kopiykas).toBe(3876000);
+      // 3 дитини 4-річки, 100% відвідуваність: 3 * (500 * 21) = 31 500 грн
+      expect(res.mealIncome.uah).toBe(31500);
+      expect(res.totalIncome.uah).toBe(70260);
+    });
   });
 
   describe('getTotalProfit', () => {
@@ -389,6 +418,30 @@ describe('AnalyticsService', () => {
       expect(res.rooms.cost.total.uah).toBe(1000000);
       expect(res.rooms.cost.idle.uah).toBe(650000);
       expect(res.rooms.cost.total.uah).toBe(1000000);
+    });
+
+    test('враховує річну знижку 12% для дітей з paymentPlan: YEARLY у загальному профіті', async () => {
+      mockRepo.findAllActiveChildren.mockResolvedValue([]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
+        {
+          id: 1,
+          name: 'Сонечко',
+          age: 2,
+          room: { id: 1, monthlyCost: 5000000 },
+          children: [
+            { id: 1, discountPercent: 0, paymentPlan: 'YEARLY' },
+            { id: 2, discountPercent: 10, paymentPlan: 'YEARLY' },
+          ],
+        },
+      ]);
+
+      const res = await service.getTotalProfit({ attendanceRate: 1 });
+
+      // Дитина 1: 15 000 * 0.88 = 13 200 грн (1 320 000 коп)
+      // Дитина 2: 13 500 * 0.88 = 11 880 грн (1 188 000 коп)
+      // Разом навчання: 25 080 грн (2 508 000 коп)
+      expect(res.income.tuition.uah).toBe(25080);
+      expect(res.income.tuition.kopiykas).toBe(2508000);
     });
 
     test('getTotalProfit використовує defaultRoomCost якщо кімната в групі не задана', async () => {

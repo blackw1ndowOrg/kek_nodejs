@@ -1,7 +1,7 @@
 const { z } = require('zod');
 
 const positiveId = z.coerce
-  .number({ invalid_type_error: 'Group ID must be a number' })
+  .number({ error: 'Group ID must be a number' })
   .int('Group ID must be an integer')
   .positive('Group ID must be positive');
 
@@ -9,7 +9,7 @@ const attendanceRateSchema = z
   .preprocess(
     (val) => (typeof val === 'string' && val.trim() !== '' ? Number(val) : val),
     z
-      .number({ invalid_type_error: 'attendanceRate must be a number' })
+      .number({ error: 'attendanceRate must be a number' })
       .positive('attendanceRate must be positive')
       .max(1, 'attendanceRate cannot exceed 1')
   )
@@ -43,7 +43,7 @@ const ageCount = z
       return val;
     },
     z
-      .number({ invalid_type_error: 'Demand must be a number' })
+      .number({ error: 'Demand must be a number' })
       .int('Demand must be an integer')
       .min(0, 'Demand must be non-negative')
       .max(10000, 'Demand cannot exceed 10000')
@@ -61,7 +61,7 @@ const forecastBodySchema = z
           return val;
         },
         z
-          .number({ invalid_type_error: 'Target children count must be a number' })
+          .number({ error: 'Target children count must be a number' })
           .int('Target children count must be an integer')
           .min(0, 'Target children count must be non-negative')
           .max(300, 'Target children count cannot exceed maximum capacity of 300')
