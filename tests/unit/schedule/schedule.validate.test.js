@@ -28,6 +28,7 @@ describe('CONFLICT', () => {
         'GROUP_OVERLAP',
         'INVALID_TIME',
         'LESSON_OUT_OF_WINDOW',
+        'MAX_LESSONS_PER_DAY',
         'OUT_OF_HOURS',
       ].sort()
     );
@@ -239,6 +240,49 @@ describe('validateSchedule', () => {
       expect(types.sort()).toEqual(
         [CONFLICT.GROUP_OVERLAP, CONFLICT.CLUB_DOUBLE_BOOKED, CONFLICT.CLUB_REPEATED_IN_DAY].sort()
       );
+    });
+  });
+
+  describe('MAX_LESSONS_PER_DAY', () => {
+    test('3 заняття на день для однієї групи -> без конфлікту', () => {
+      const slots = [540, 585, 630].map((startMinute, i) =>
+        slot({ id: i + 1, clubId: i + 1, startMinute, endMinute: startMinute + 30 })
+      );
+      expect(validateSchedule(slots)).toEqual([]);
+    });
+
+    test('4 заняття на день для однієї групи -> MAX_LESSONS_PER_DAY', () => {
+      const slots = [540, 585, 630, 840].map((startMinute, i) =>
+        slot({ id: i + 1, clubId: i + 1, startMinute, endMinute: startMinute + 30 })
+      );
+      const conflicts = validateSchedule(slots);
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0]).toMatchObject({
+        type: CONFLICT.MAX_LESSONS_PER_DAY,
+        dayOfWeek: 1,
+        groupId: 1,
+      });
+      expect(conflicts[0].slots).toHaveLength(4);
+    });
+
+    test('4 заняття розбиті на різні дні або різні групи — без конфлікту', () => {
+      expect(
+        validateSchedule([
+          slot({ id: 1, dayOfWeek: 1, clubId: 1, startMinute: 540, endMinute: 570 }),
+          slot({ id: 2, dayOfWeek: 1, clubId: 2, startMinute: 585, endMinute: 615 }),
+          slot({ id: 3, dayOfWeek: 2, clubId: 3, startMinute: 540, endMinute: 570 }),
+          slot({ id: 4, dayOfWeek: 2, clubId: 4, startMinute: 585, endMinute: 615 }),
+        ])
+      ).toEqual([]);
+
+      expect(
+        validateSchedule([
+          slot({ id: 1, groupId: 1, clubId: 1, startMinute: 540, endMinute: 570 }),
+          slot({ id: 2, groupId: 1, clubId: 2, startMinute: 585, endMinute: 615 }),
+          slot({ id: 3, groupId: 2, clubId: 3, startMinute: 540, endMinute: 570 }),
+          slot({ id: 4, groupId: 2, clubId: 4, startMinute: 585, endMinute: 615 }),
+        ])
+      ).toEqual([]);
     });
   });
 

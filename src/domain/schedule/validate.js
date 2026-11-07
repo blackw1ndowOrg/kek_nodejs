@@ -1,4 +1,4 @@
-const { ACTIVITY, DAY_START, DAY_END, LESSON_WINDOWS } = require('./template');
+const { ACTIVITY, DAY_START, DAY_END, LESSON_WINDOWS, LESSONS_PER_DAY } = require('./template');
 
 const CONFLICT = Object.freeze({
   GROUP_OVERLAP: 'GROUP_OVERLAP', // у групи два слоти, що перетинаються в часі
@@ -7,6 +7,7 @@ const CONFLICT = Object.freeze({
   LESSON_OUT_OF_WINDOW: 'LESSON_OUT_OF_WINDOW', // заняття поза періодами 09:00–12:00 / 14:00–17:45
   OUT_OF_HOURS: 'OUT_OF_HOURS', // слот поза межами дня
   INVALID_TIME: 'INVALID_TIME', // кінець не пізніше за початок
+  MAX_LESSONS_PER_DAY: 'MAX_LESSONS_PER_DAY', // не більше 3 занять на день
 });
 
 const overlaps = (a, b) => a.startMinute < b.endMinute && b.startMinute < a.endMinute;
@@ -92,7 +93,18 @@ function validateSchedule(slots) {
     conflicts,
     always
   );
+  for (const groupSlots of byGroupDay.values()) {
+    const lessons = groupSlots.filter((slot) => slot.activity === ACTIVITY.CLUB);
+    if (lessons.length > LESSONS_PER_DAY) {
+      conflicts.push({
+        type: CONFLICT.MAX_LESSONS_PER_DAY,
+        dayOfWeek: groupSlots[0].dayOfWeek,
+        groupId: groupSlots[0].groupId,
+        slots: lessons,
+      });
+    }
+  }
   return conflicts;
 }
 
-module.exports = { validateSchedule, CONFLICT };
+module.exports = { validateSchedule, CONFLICT, inLessonWindow };

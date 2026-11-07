@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { ACTIVITY } = require('../../domain/schedule');
 
 const groupParams = z.object({
   groupId: z.coerce.number().int('Некоректний id групи').positive('Некоректний id групи'),
@@ -10,7 +11,7 @@ const slotParams = z.object({
 
 const groupScheduleSchema = z.object({ params: groupParams });
 
-// Активність слота змінити не можна: редагується день, час або гурток
+// Редагується день, час, активність (FREE_PLAY <-> CLUB) або гурток
 const updateSlotSchema = z.object({
   params: slotParams,
   body: z
@@ -30,10 +31,14 @@ const updateSlotSchema = z.object({
         .int('endMinute має бути цілим числом')
         .min(1, 'endMinute: від 1 до 1440')
         .max(1440, 'endMinute: від 1 до 1440'),
+      activity: z.enum([ACTIVITY.FREE_PLAY, ACTIVITY.CLUB], {
+        message: 'activity може бути лише FREE_PLAY або CLUB',
+      }),
       clubId: z
         .number()
         .int('clubId має бути цілим числом')
-        .positive('clubId має бути додатним числом'),
+        .positive('clubId має бути додатним числом')
+        .nullable(),
     })
     .partial()
     .strict()
@@ -44,6 +49,15 @@ const updateSlotSchema = z.object({
         body.endMinute === undefined ||
         body.startMinute < body.endMinute,
       'Початок заняття має бути раніше за кінець'
+    )
+    .refine(
+      (body) =>
+        body.activity !== ACTIVITY.CLUB || (body.clubId !== undefined && body.clubId !== null),
+      "Для activity CLUB обов'язково вказати clubId"
+    )
+    .refine(
+      (body) => body.clubId !== null || body.activity === ACTIVITY.FREE_PLAY,
+      'clubId може бути null лише при activity FREE_PLAY'
     ),
 });
 
