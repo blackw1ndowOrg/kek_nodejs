@@ -218,6 +218,58 @@ describe('Clubs API (Supertest)', () => {
       expect(clubsRepository.delete).toHaveBeenCalledWith(4);
     });
 
+    test('слоти до і після: видалення гуртка перетворює його слоти на FREE_PLAY, кількість слотів групи лишається 70', async () => {
+      // 70 слотів групи «Дзвіночок», 3 з яких — гурток 4
+      const initialSlots = Array.from({ length: 70 }, (_, i) => {
+        if (i < 3) return { id: i + 1, groupId: 2, activity: 'CLUB', clubId: 4 };
+        if (i < 15) return { id: i + 1, groupId: 2, activity: 'CLUB', clubId: 5 };
+        return { id: i + 1, groupId: 2, activity: 'FREE_PLAY', clubId: null };
+      });
+      let slots = JSON.parse(JSON.stringify(initialSlots));
+
+      clubsRepository.delete.mockImplementationOnce(async (id) => {
+        slots = slots.map((s) =>
+          s.clubId === id ? { ...s, activity: 'FREE_PLAY', clubId: null } : s
+        );
+      });
+
+      expect(slots).toHaveLength(70);
+      expect(slots.filter((s) => s.clubId === 4)).toHaveLength(3);
+
+      const res = await request(app).delete(`${BASE}/4`).set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.NO_CONTENT);
+
+      // Перевірки після видалення
+      expect(slots).toHaveLength(70);
+      expect(slots.filter((s) => s.clubId === 4)).toHaveLength(0);
+      const converted = slots.filter((s) => [1, 2, 3].includes(s.id));
+      expect(converted.every((s) => s.activity === 'FREE_PLAY' && s.clubId === null)).toBe(true);
+      expect(slots.filter((s) => s.activity === 'CLUB' && s.clubId === null)).toHaveLength(0);
+    });
+
+    test('якщо club.delete падає, слоти не змінені', async () => {
+      const initialSlots = Array.from({ length: 70 }, (_, i) => ({
+        id: i + 1,
+        groupId: 2,
+        activity: i < 3 ? 'CLUB' : 'FREE_PLAY',
+        clubId: i < 3 ? 4 : null,
+      }));
+      let slots = JSON.parse(JSON.stringify(initialSlots));
+
+      clubsRepository.delete.mockImplementationOnce(async (id) => {
+        const rollback = JSON.parse(JSON.stringify(slots));
+        slots = slots.map((s) =>
+          s.clubId === id ? { ...s, activity: 'FREE_PLAY', clubId: null } : s
+        );
+        slots = rollback;
+        throw new Error('DB transaction failure');
+      });
+
+      const res = await request(app).delete(`${BASE}/4`).set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.INTERNAL_SERVER_ERROR);
+      expect(slots).toEqual(initialSlots);
+    });
+
     test('гуртка немає -> 404', async () => {
       clubsRepository.findById.mockResolvedValueOnce(null);
       const res = await request(app).delete(`${BASE}/99`).set('Authorization', tokenFor('ADMIN'));

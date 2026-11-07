@@ -644,8 +644,13 @@ components:
         endMinute:
           type: integer
           example: 630
+        activity:
+          type: string
+          enum: [FREE_PLAY, CLUB]
+          example: CLUB
         clubId:
           type: integer
+          nullable: true
           example: 2
     Money:
       type: object
@@ -1886,11 +1891,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ScheduleSlot'
         '400':
-          description: Помилка валідації (наприклад, початок пізніше за кінець)
+          description: Помилка валідації (наприклад, початок пізніше за кінець або призначення заняття на сон/їжу)
         '404':
-          description: Слот не знайдено
+          description: Слот або гурток не знайдено
         '409':
-          description: Часовий конфлікт або кімната/викладач зайняті
+          description: Конфлікт розкладу (накладка, кімната зайнята, повторення гуртка або більше 3 занять на день)
 
   # --- ANALYTICS MODULE ---
   /api/v1/analytics/groups/{id}/profit:
