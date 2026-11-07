@@ -9,6 +9,7 @@ const {
   ScheduleCapacityError,
   generateSchedule,
   validateSchedule,
+  inLessonWindow,
 } = require('../../domain/schedule');
 const { scheduleRepository } = require('./schedule.repository');
 
@@ -82,8 +83,33 @@ class ScheduleService {
     if (!slot) {
       throw new NotFoundError('Слот розкладу не знайдено');
     }
-    if (data.clubId !== undefined) {
-      if (slot.activity !== ACTIVITY.CLUB) {
+
+    if (data.activity !== undefined) {
+      if (data.activity === ACTIVITY.CLUB) {
+        if (slot.activity !== ACTIVITY.FREE_PLAY && slot.activity !== ACTIVITY.CLUB) {
+          throw new BadRequestError('Заняття можна ставити лише замість FREE_PLAY у зонах занять');
+        }
+        if (!inLessonWindow(slot)) {
+          throw new BadRequestError('Заняття можна ставити лише у слотах зон занять');
+        }
+        const clubId = data.clubId !== undefined ? data.clubId : slot.clubId;
+        if (!clubId) {
+          throw new BadRequestError("Для заняття типу CLUB обов'язково вказати clubId");
+        }
+        data.clubId = clubId;
+      } else if (data.activity === ACTIVITY.FREE_PLAY) {
+        if (slot.activity !== ACTIVITY.CLUB && slot.activity !== ACTIVITY.FREE_PLAY) {
+          throw new BadRequestError('Звільнити можна лише слот заняття CLUB');
+        }
+        data.clubId = null;
+      } else {
+        throw new BadRequestError('Некоректна активність');
+      }
+    }
+
+    if (data.clubId !== undefined && data.clubId !== null) {
+      const targetActivity = data.activity ?? slot.activity;
+      if (targetActivity !== ACTIVITY.CLUB) {
         throw new BadRequestError('Гурток можна призначити лише заняттю типу CLUB');
       }
       if (!(await this.repository.findClub(data.clubId))) {
@@ -92,6 +118,9 @@ class ScheduleService {
     }
 
     const updated = { ...slot, ...data };
+    if (data.activity === ACTIVITY.FREE_PLAY) {
+      updated.clubId = null;
+    }
     const related = await this.repository.findRelatedSlots(updated.groupId, updated.clubId);
     const others = related.filter((item) => item.id !== id);
     const conflicts = validateSchedule([...others, updated]).filter((conflict) =>

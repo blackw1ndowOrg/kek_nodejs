@@ -50,12 +50,16 @@ class ClubsRepository {
   }
 
   /**
-   * Видаляє гурток разом зі слотами розкладу. У схемі ScheduleSlot.club має onDelete: SetNull,
-   * тож без явного deleteMany у розкладі лишилися б заняття з clubId = null.
+   * Видаляє гурток, перетворюючи його слоти розкладу на вільний час (FREE_PLAY).
+   * У схемі ScheduleSlot.club має onDelete: SetNull, тож без явного updateMany
+   * clubId став би null, а activity залишилася б CLUB.
    */
   async delete(id) {
     await this.db.$transaction(async (tx) => {
-      await tx.scheduleSlot.deleteMany({ where: { clubId: id } });
+      await tx.scheduleSlot.updateMany({
+        where: { clubId: id },
+        data: { activity: 'FREE_PLAY', clubId: null },
+      });
       await tx.club.delete({ where: { id } });
     });
   }

@@ -51,6 +51,9 @@ describe('updateSlotSchema', () => {
     ['гурток', { clubId: 2 }],
     ['день і час', { dayOfWeek: 2, startMinute: 600, endMinute: 645 }],
     ['усе разом', { dayOfWeek: 5, startMinute: 540, endMinute: 585, clubId: 1 }],
+    ['activity FREE_PLAY', { activity: 'FREE_PLAY' }],
+    ['activity FREE_PLAY з clubId null', { activity: 'FREE_PLAY', clubId: null }],
+    ['activity CLUB з clubId', { activity: 'CLUB', clubId: 3 }],
   ])('%s -> валідно', (_name, body) => {
     expect(parse(body).success).toBe(true);
   });
@@ -76,8 +79,11 @@ describe('updateSlotSchema', () => {
     ['endMinute 1441', { endMinute: 1441 }],
     ['clubId 0', { clubId: 0 }],
     ['clubId рядком', { clubId: '2' }],
-    ['clubId null', { clubId: null }],
-    ['активність змінювати не можна', { activity: 'CLUB' }],
+    ['clubId null без FREE_PLAY', { clubId: null }],
+    ['activity CLUB без clubId', { activity: 'CLUB' }],
+    ['activity CLUB з clubId null', { activity: 'CLUB', clubId: null }],
+    ['недозволена активність SLEEP', { activity: 'SLEEP' }],
+    ['недозволена активність MEAL', { activity: 'MEAL' }],
     ['зайве поле', { groupId: 2 }],
   ])('%s -> помилка', (_name, body) => {
     expect(parse(body).success).toBe(false);

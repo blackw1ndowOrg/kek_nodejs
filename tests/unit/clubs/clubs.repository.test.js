@@ -6,7 +6,7 @@ const {
 
 function createRepository() {
   const tx = {
-    scheduleSlot: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
+    scheduleSlot: { updateMany: jest.fn().mockResolvedValue({ count: 3 }) },
     club: { delete: jest.fn().mockResolvedValue({ id: 4 }) },
   };
   const db = {
@@ -91,13 +91,16 @@ describe('ClubsRepository', () => {
   });
 
   describe('delete', () => {
-    test('у транзакції спершу видаляє слоти розкладу гуртка, потім сам гурток', async () => {
+    test('у транзакції спершу оновлює слоти розкладу гуртка на FREE_PLAY, потім видаляє сам гурток', async () => {
       const { db, tx, repository } = createRepository();
       await expect(repository.delete(4)).resolves.toBeUndefined();
       expect(db.$transaction).toHaveBeenCalledTimes(1);
-      expect(tx.scheduleSlot.deleteMany).toHaveBeenCalledWith({ where: { clubId: 4 } });
+      expect(tx.scheduleSlot.updateMany).toHaveBeenCalledWith({
+        where: { clubId: 4 },
+        data: { activity: 'FREE_PLAY', clubId: null },
+      });
       expect(tx.club.delete).toHaveBeenCalledWith({ where: { id: 4 } });
-      expect(tx.scheduleSlot.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(tx.scheduleSlot.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
         tx.club.delete.mock.invocationCallOrder[0]
       );
     });
