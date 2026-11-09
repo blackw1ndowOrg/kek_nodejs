@@ -42,6 +42,7 @@ describe('Children API (Supertest)', () => {
     jest.spyOn(childrenRepository, 'countParents').mockResolvedValue(1);
     jest.spyOn(childrenRepository, 'create').mockResolvedValue(CHILD);
     jest.spyOn(childrenRepository, 'update').mockResolvedValue(CHILD);
+    jest.spyOn(childrenRepository, 'findGroup').mockResolvedValue({ name: 'Сонечко', age: 3 });
   });
 
   afterEach(() => {
@@ -135,9 +136,10 @@ describe('Children API (Supertest)', () => {
         .send(NEW_CHILD);
       expect(res.status).toBe(StatusCodes.CREATED);
       expect(res.body).toEqual(CHILD);
-      const [data, parentIds] = childrenRepository.create.mock.calls[0];
+      const [data, parentIds, actorUserId] = childrenRepository.create.mock.calls[0];
       expect(data.birthDate).toBeInstanceOf(Date);
       expect(parentIds).toEqual([7]);
+      expect(actorUserId).toBe(2); // хто створив — для історії змін
     });
 
     test('невалідне тіло -> 400', async () => {
@@ -183,7 +185,7 @@ describe('Children API (Supertest)', () => {
         .set('Authorization', tokenFor('PARENT'))
         .send({ notes: 'не любить гречку' });
       expect(res.status).toBe(StatusCodes.OK);
-      expect(childrenRepository.update).toHaveBeenCalledWith(5, { notes: 'не любить гречку' });
+      expect(childrenRepository.update).toHaveBeenCalledWith(5, { notes: 'не любить гречку' }, 12);
       expect(res.body).not.toHaveProperty('discountPercent');
     });
 
@@ -202,6 +204,41 @@ describe('Children API (Supertest)', () => {
         .send({});
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
     });
+
+    test('дата народження не за віком групи -> 400, нічого не записано', async () => {
+      const res = await request(app)
+        .patch(`${BASE}/5`)
+        .set('Authorization', tokenFor('MANAGER', 2))
+        .send({ birthDate: `${birthYear(5)}-03-15` });
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.message).toMatch('Спершу переведіть дитину');
+      expect(childrenRepository.findGroup).toHaveBeenCalledWith(3);
+      expect(childrenRepository.update).not.toHaveBeenCalled();
+    });
+
+    test('дата народження за віком групи -> 200', async () => {
+      const res = await request(app)
+        .patch(`${BASE}/5`)
+        .set('Authorization', tokenFor('MANAGER', 2))
+        .send({ birthDate: `${birthYear(3)}-01-10` });
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(childrenRepository.update).toHaveBeenCalled();
+    });
+
+    test('повернення вибулої дитини, що переросла 5 років -> 400', async () => {
+      childrenRepository.findById.mockResolvedValueOnce({
+        ...CHILD,
+        isActive: false,
+        groupId: null,
+        birthDate: `${birthYear(6)}-03-15T00:00:00.000Z`,
+      });
+      const res = await request(app)
+        .patch(`${BASE}/5`)
+        .set('Authorization', tokenFor('MANAGER', 2))
+        .send({ isActive: true });
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(childrenRepository.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('DELETE /children/:id', () => {
@@ -211,10 +248,11 @@ describe('Children API (Supertest)', () => {
         .set('Authorization', tokenFor('MANAGER', 2));
       expect(res.status).toBe(StatusCodes.NO_CONTENT);
       expect(res.body).toEqual({});
-      expect(childrenRepository.update).toHaveBeenCalledWith(5, {
-        isActive: false,
-        groupId: null,
-      });
+      expect(childrenRepository.update).toHaveBeenCalledWith(
+        5,
+        { isActive: false, groupId: null },
+        2
+      );
     });
 
     test('неіснуюча дитина -> 404', async () => {

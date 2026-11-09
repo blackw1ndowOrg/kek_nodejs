@@ -1,6 +1,7 @@
 const { prisma } = require('../../src/config/prisma');
 const { withActor } = require('../../src/config/audit');
 const { absencesRepository } = require('../../src/modules/absences/absences.repository');
+const { childrenRepository } = require('../../src/modules/children/children.repository');
 
 // Історія змін на справжній PostgreSQL: тригери з міграції add_audit_log.
 // Без бази тести пропускаються (як і інші *.db.test.js).
@@ -95,6 +96,18 @@ describe('Історія змін (AuditLog, справжня PostgreSQL)', () =
     expect(first.newData.notes).toBe('QA: історія змін');
     expect(first.actorUserId).toBeNull();
     expect(second.newData.notes).toBe(child.notes);
+  });
+
+  runIfDb('зміна дитини через репозиторій — з автором', async () => {
+    const child = await prisma.child.findFirst({ where: { isActive: true } });
+    const user = await prisma.user.findFirst();
+    await childrenRepository.update(child.id, { notes: 'QA: автор зміни' }, user.id);
+    await childrenRepository.update(child.id, { notes: child.notes }, user.id);
+
+    const [changed, restored] = (await historyOf('Child', child.id)).slice(-2);
+    expect(changed).toMatchObject({ action: 'UPDATE', actorUserId: user.id });
+    expect(changed.newData.notes).toBe('QA: автор зміни');
+    expect(restored.newData.notes).toBe(child.notes);
   });
 
   runIfDb('пароль не потрапляє в історію, але сам факт зміни видно', async () => {

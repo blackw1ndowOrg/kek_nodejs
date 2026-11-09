@@ -1370,6 +1370,11 @@ paths:
           description: Дитину не знайдено
     patch:
       summary: Оновлення картки дитини (ADMIN, MANAGER, PARENT)
+      description: |
+        Перевірки віку (на 1 вересня поточного навчального року):
+        - нова `birthDate` — вік від 2 до 5 років;
+        - нова `birthDate` дитини, яка лишається в групі, — вік дорівнює віку групи. Щоб змінити вік, спершу переведіть дитину в іншу групу;
+        - повернення вибулої дитини (`isActive: true`) — вік від 2 до 5 років.
       tags:
         - Children
       parameters:
@@ -1391,6 +1396,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Child'
+        '400':
+          description: Помилка валідації, вік поза межами 2–5 років або не збігається з віком групи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Батьки можуть редагувати лише власну дитину і тільки дозволені поля
         '404':

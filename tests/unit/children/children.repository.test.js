@@ -15,9 +15,15 @@ function createRepository() {
       update: jest.fn().mockResolvedValue({ id: 1 }),
     },
     parent: { count: jest.fn().mockResolvedValue(2) },
+    group: { findUnique: jest.fn().mockResolvedValue({ name: 'Сонечко', age: 4 }) },
+    // withActor: транзакція, у якій спершу ставиться app.actor_id для історії змін
+    $executeRaw: jest.fn().mockResolvedValue(1),
   };
+  db.$transaction = jest.fn(async (fn) => fn(db));
   return { db, repository: new ChildrenRepository(db) };
 }
+
+const actorOf = (db) => db.$executeRaw.mock.calls[0][1];
 
 describe('ChildrenRepository', () => {
   test('експортований екземпляр за замовчуванням', () => {
@@ -72,7 +78,9 @@ describe('ChildrenRepository', () => {
 
   test('create прив’язує дитину до кожного з батьків', async () => {
     const { db, repository } = createRepository();
-    await repository.create({ fullName: 'Іван' }, [1, 2]);
+    await repository.create({ fullName: 'Іван' }, [1, 2], 2);
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(actorOf(db)).toBe('2');
     expect(db.child.create).toHaveBeenCalledWith({
       data: {
         fullName: 'Іван',
@@ -84,13 +92,24 @@ describe('ChildrenRepository', () => {
     });
   });
 
-  test('update', async () => {
+  test('update від імені користувача', async () => {
     const { db, repository } = createRepository();
-    await repository.update(5, { notes: null });
+    await repository.update(5, { notes: null }, 12);
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(actorOf(db)).toBe('12');
     expect(db.child.update).toHaveBeenCalledWith({
       where: { id: 5 },
       data: { notes: null },
       select: CHILD_SELECT,
+    });
+  });
+
+  test('findGroup: лише назва й вік групи', async () => {
+    const { db, repository } = createRepository();
+    await expect(repository.findGroup(3)).resolves.toEqual({ name: 'Сонечко', age: 4 });
+    expect(db.group.findUnique).toHaveBeenCalledWith({
+      where: { id: 3 },
+      select: { name: true, age: true },
     });
   });
 });
