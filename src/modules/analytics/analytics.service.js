@@ -18,6 +18,9 @@ const DEFAULT_CLUB_ROOMS_COUNT = 5;
 const DEFAULT_WORKING_DAYS = 21;
 
 function isStaffActive(staffRelation, staffId) {
+  if (staffId === null || staffRelation === null) {
+    return false;
+  }
   if (staffRelation !== undefined && staffRelation !== null) {
     if (staffRelation.isActive !== undefined) {
       return Boolean(staffRelation.isActive);
