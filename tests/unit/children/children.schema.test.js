@@ -3,6 +3,7 @@ const {
   listChildrenSchema,
   createChildSchema,
   updateChildSchema,
+  updateDiscountSchema,
 } = require('../../../src/modules/children/children.schema');
 
 const validChild = { fullName: 'Іван Петренко', birthDate: '2022-03-15', parentIds: [1] };
@@ -104,5 +105,30 @@ describe('updateChildSchema', () => {
     ['невалідний id', { id: 'x' }, { isActive: true }],
   ])('%s -> помилка', (_name, params, body) => {
     expect(updateChildSchema.safeParse({ params, body }).success).toBe(false);
+  });
+});
+
+describe('updateDiscountSchema', () => {
+  test('валідне тіло та id з params', () => {
+    const parsed = updateDiscountSchema.parse({
+      params: { id: '5' },
+      body: { discountPercent: 20 },
+    });
+    expect(parsed).toEqual({
+      params: { id: 5 },
+      body: { discountPercent: 20 },
+    });
+  });
+
+  test.each([
+    ['без discountPercent', { id: '5' }, {}],
+    ['невалідний id', { id: 'abc' }, { discountPercent: 10 }],
+    ['нечислове значення', { id: '5' }, { discountPercent: '10' }],
+    ['дробове значення', { id: '5' }, { discountPercent: 10.5 }],
+    ['від’ємне значення', { id: '5' }, { discountPercent: -5 }],
+    ['понад 100', { id: '5' }, { discountPercent: 105 }],
+    ['зайві поля (.strict)', { id: '5' }, { discountPercent: 10, notes: 'зайве' }],
+  ])('%s -> помилка', (_name, params, body) => {
+    expect(updateDiscountSchema.safeParse({ params, body }).success).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ const {
   listChildrenSchema,
   createChildSchema,
   updateChildSchema,
+  updateDiscountSchema,
 } = require('./children.schema');
 const { childrenController } = require('./children.controller');
 
@@ -31,6 +32,12 @@ router.get(
   childrenController.getById
 );
 router.post('/', authorize(...STAFF), validate(createChildSchema), childrenController.create);
+router.patch(
+  '/:id/discount',
+  authorize(Role.ADMIN),
+  validate(updateDiscountSchema),
+  childrenController.updateDiscount
+);
 router.patch(
   '/:id',
   authorize(...STAFF_AND_PARENT),
