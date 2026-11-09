@@ -1,9 +1,7 @@
 const { prisma } = require('../../config/prisma');
-const { withActor } = require('../../config/audit');
 
 // Лише запити до бази. Хто може бачити дитину й коли відсутність зараховується,
-// вирішує absences.service.js. Кожен запис іде через withActor: в історії змін ("AuditLog")
-// видно, хто додав чи скасував відсутність
+// вирішує absences.service.js
 
 const ABSENCE_SELECT = Object.freeze({
   id: true,
@@ -17,17 +15,12 @@ class AbsencesRepository {
     this.db = db;
   }
 
-  /**
-   * date — 'YYYY-MM-DD': для поля @db.Date Prisma чекає Date (північ UTC)
-   * @param {number} actorUserId хто додає (для історії змін)
-   */
-  async create({ childId, date, notifiedAt }, actorUserId) {
-    return withActor(this.db, actorUserId, (tx) =>
-      tx.absence.create({
-        data: { childId, date: new Date(date), notifiedAt },
-        select: ABSENCE_SELECT,
-      })
-    );
+  /** date — 'YYYY-MM-DD': для поля @db.Date Prisma чекає Date (північ UTC) */
+  async create({ childId, date, notifiedAt }) {
+    return this.db.absence.create({
+      data: { childId, date: new Date(date), notifiedAt },
+      select: ABSENCE_SELECT,
+    });
   }
 
   /** Відсутності дитини в межах [from, to), за датою */
@@ -43,12 +36,8 @@ class AbsencesRepository {
     return this.db.absence.findUnique({ where: { id }, select: ABSENCE_SELECT });
   }
 
-  /**
-   * Рядок видаляється, але його стан до видалення лишається в "AuditLog"
-   * @param {number} actorUserId хто скасовує (для історії змін)
-   */
-  async delete(id, actorUserId) {
-    await withActor(this.db, actorUserId, (tx) => tx.absence.delete({ where: { id } }));
+  async delete(id) {
+    await this.db.absence.delete({ where: { id } });
   }
 }
 

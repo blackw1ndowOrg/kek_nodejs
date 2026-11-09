@@ -36,7 +36,7 @@ model Absence {
 | `@@unique([childId, date])` | Одна відсутність на дитину на день; дубль → 409 |
 | `onDelete: Cascade` | Відсутності видаляються разом із дитиною |
 
-Міграція: `prisma/migrations/20261109150000_add_absence` (після `add_audit_log`, бо вмикає історію для таблиці).
+Міграція: `prisma/migrations/20261109140000_add_absence`.
 
 `counted` у базі не зберігається, а обчислюється: `notifiedAt < 08:30 (Київ) дня date`.
 
@@ -48,7 +48,7 @@ model Absence {
 | --- | --- |
 | `src/domain/absence.js` | Чисті функції: дедлайн 08:30 за Києвом, `isCounted`, «сьогодні» і поточний місяць за Києвом, вихідні, межі місяця, `mealDays` |
 | `absences.schema.js` | Zod: форма `params`, `query`, `body`; `.strict()` не пропускає `notifiedAt` |
-| `absences.repository.js` | Запити Prisma; записи — через `withActor`, щоб в історії було видно автора |
+| `absences.repository.js` | Запити Prisma |
 | `absences.service.js` | Правила: доступ батьків, вихідний, минула дата, дубль, скасування до 08:30 |
 | `absences.controller.js` | HTTP: дані із запиту → сервіс → статус і JSON |
 | `absences.routes.js` | `Router({ mergeParams: true })`, монтується на `/api/v1/children/:childId/absences` |
@@ -100,20 +100,7 @@ model Absence {
 
 ---
 
-## 6. Історія змін
-
-Кожна зміна `Absence` записується в `AuditLog` (див. [AUDIT.md](AUDIT.md)):
-
-| Подія | `action` | Що зберігається |
-| --- | --- | --- |
-| Батьки чи менеджер додали відсутність | `INSERT` | `newData`: дата й `notifiedAt`; `actorUserId` — хто додав |
-| Відсутність скасували | `DELETE` | `oldData`: повний стан до скасування; `actorUserId` — хто скасував |
-
-Тому скасування фізично видаляє рядок: стан до видалення лишається в історії, а обмеження «одна відсутність на дату» дає знову додати відсутність на ту саму дату.
-
----
-
-## 7. Вплив на billing
+## 6. Вплив на billing
 
 `GET /api/v1/billing/children/:childId?month=YYYY-MM` (без `month` — поточний місяць за Києвом):
 
@@ -138,7 +125,7 @@ model Absence {
 
 ---
 
-## 8. Тестування
+## 7. Тестування
 
 | Файл | Що перевіряє |
 | --- | --- |
@@ -148,7 +135,6 @@ model Absence {
 | `tests/unit/absences/absences.service.test.js` | усі правила розділу 5; межа 08:30 з fake timers |
 | `tests/integration/absences.test.js` | Supertest: ролі, статуси, форма відповіді |
 | `tests/unit/billing/billing.meals.test.js` | справжні формули: 21 день → 8 400 грн, 2 відсутності → ставка × 19 |
-| `tests/integration/audit.db.test.js` | справжня PostgreSQL: історія відсутності з автором і станом до скасування |
 
 Покриття `src/modules/absences/` і `src/domain/absence.js`: **100%**.
 

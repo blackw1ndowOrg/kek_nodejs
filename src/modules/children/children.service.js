@@ -132,7 +132,7 @@ class ChildrenService {
     }
 
     try {
-      return this.toResponse(user, await this.repository.create(data, uniqueParentIds, user.id));
+      return this.toResponse(user, await this.repository.create(data, uniqueParentIds));
     } catch (error) {
       throw translateDbError(error, PARENT_NOT_FOUND);
     }
@@ -166,7 +166,7 @@ class ChildrenService {
     this.assertAdminFields(user, data);
 
     try {
-      return this.toResponse(user, await this.repository.update(id, payload, user.id));
+      return this.toResponse(user, await this.repository.update(id, payload));
     } catch (error) {
       throw translateDbError(error, CHILD_NOT_FOUND);
     }
@@ -175,7 +175,7 @@ class ChildrenService {
   async deactivate(user, id) {
     await this.findAccessible(user, id);
     try {
-      await this.repository.update(id, { isActive: false, groupId: null }, user.id);
+      await this.repository.update(id, { isActive: false, groupId: null });
     } catch (error) {
       throw translateDbError(error, CHILD_NOT_FOUND);
     }

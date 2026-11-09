@@ -13,6 +13,3 @@ CREATE UNIQUE INDEX "Absence_childId_date_key" ON "Absence"("childId", "date");
 
 -- AddForeignKey
 ALTER TABLE "Absence" ADD CONSTRAINT "Absence_childId_fkey" FOREIGN KEY ("childId") REFERENCES "Child"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- Історія змін (див. міграцію add_audit_log)
-SELECT enable_audit('"Absence"');

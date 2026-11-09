@@ -75,10 +75,11 @@ describe('AbsencesService', () => {
     test('notifiedAt ставить сервер; відповідь без даних дитини', async () => {
       const { repository, service } = createService();
       const result = await service.create(PARENT, 5, '2026-11-12');
-      expect(repository.create).toHaveBeenCalledWith(
-        { childId: 5, date: '2026-11-12', notifiedAt: NOW },
-        12 // хто додав — для історії змін
-      );
+      expect(repository.create).toHaveBeenCalledWith({
+        childId: 5,
+        date: '2026-11-12',
+        notifiedAt: NOW,
+      });
       expect(result).toEqual({
         id: 1,
         childId: 5,
@@ -218,7 +219,7 @@ describe('AbsencesService', () => {
       const { repository, service } = createService();
       repository.findById.mockResolvedValueOnce(absence(7, '2026-11-09', '2026-11-08T18:00:00Z'));
       await expect(service.remove(PARENT, 5, 7)).resolves.toBeUndefined();
-      expect(repository.delete).toHaveBeenCalledWith(7, 12);
+      expect(repository.delete).toHaveBeenCalledWith(7);
     });
 
     test('о 08:30 дня відсутності і пізніше -> 409', async () => {

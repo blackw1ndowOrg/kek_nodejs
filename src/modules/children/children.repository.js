@@ -1,8 +1,6 @@
 const { prisma } = require('../../config/prisma');
-const { withActor } = require('../../config/audit');
 
 // Лише запити до бази. Хто що може бачити й змінювати, вирішує children.service.js.
-// Записи йдуть через withActor: в історії змін ("AuditLog") видно, хто їх зробив.
 
 const CHILD_SELECT = Object.freeze({
   id: true,
@@ -53,33 +51,25 @@ class ChildrenRepository {
     return this.db.parent.count({ where: { id: { in: parentIds } } });
   }
 
-  /**
-   * Створює дитину і в тій самій операції прив'язує її до батьків
-   * @param {number} actorUserId хто створює (для історії змін)
-   */
-  async create(data, parentIds, actorUserId) {
-    return withActor(this.db, actorUserId, (tx) =>
-      tx.child.create({
-        data: {
-          ...data,
-          parents: {
-            create: parentIds.map((parentId) => ({ parent: { connect: { id: parentId } } })),
-          },
+  /** Створює дитину і в тій самій операції прив'язує її до батьків */
+  async create(data, parentIds) {
+    return this.db.child.create({
+      data: {
+        ...data,
+        parents: {
+          create: parentIds.map((parentId) => ({ parent: { connect: { id: parentId } } })),
         },
-        select: CHILD_SELECT,
-      })
-    );
+      },
+      select: CHILD_SELECT,
+    });
   }
 
-  /** @param {number} actorUserId хто змінює (для історії змін) */
-  async update(id, data, actorUserId) {
-    return withActor(this.db, actorUserId, (tx) =>
-      tx.child.update({
-        where: { id },
-        data,
-        select: CHILD_SELECT,
-      })
-    );
+  async update(id, data) {
+    return this.db.child.update({
+      where: { id },
+      data,
+      select: CHILD_SELECT,
+    });
   }
 
   /** Назва й вік групи: щоб звірити з ними вік дитини при зміні дати народження */

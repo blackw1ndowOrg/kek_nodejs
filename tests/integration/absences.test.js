@@ -82,10 +82,11 @@ describe('Absences API (Supertest)', () => {
         notifiedAt: NOW.toISOString(),
         counted: true,
       });
-      expect(absencesRepository.create).toHaveBeenCalledWith(
-        { childId: 5, date: '2026-11-12', notifiedAt: NOW },
-        12
-      );
+      expect(absencesRepository.create).toHaveBeenCalledWith({
+        childId: 5,
+        date: '2026-11-12',
+        notifiedAt: NOW,
+      });
     });
 
     test('у відповіді немає знижки й кумівства дитини', async () => {
@@ -166,7 +167,7 @@ describe('Absences API (Supertest)', () => {
       const res = await request(app).delete(`${BASE}/7`).set('Authorization', tokenFor('PARENT'));
       expect(res.status).toBe(StatusCodes.NO_CONTENT);
       expect(res.body).toEqual({});
-      expect(absencesRepository.delete).toHaveBeenCalledWith(7, 12);
+      expect(absencesRepository.delete).toHaveBeenCalledWith(7);
     });
 
     test('після 08:30 дня відсутності -> 409', async () => {

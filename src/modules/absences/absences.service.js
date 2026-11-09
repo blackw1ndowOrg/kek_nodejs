@@ -72,7 +72,7 @@ class AbsencesService {
     }
 
     try {
-      const absence = await this.repository.create({ childId, date, notifiedAt: now }, user.id);
+      const absence = await this.repository.create({ childId, date, notifiedAt: now });
       return this.toResponse(absence);
     } catch (error) {
       if (error?.code === UNIQUE_VIOLATION) {
@@ -113,7 +113,7 @@ class AbsencesService {
     }
 
     try {
-      await this.repository.delete(absenceId, user.id);
+      await this.repository.delete(absenceId);
     } catch (error) {
       if (error?.code === RECORD_NOT_FOUND) {
         throw new NotFoundError(ABSENCE_NOT_FOUND);

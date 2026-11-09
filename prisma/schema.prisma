@@ -31,12 +31,6 @@ enum StaffType {
   MANAGER
 }
 
-enum AuditAction {
-  INSERT
-  UPDATE
-  DELETE
-}
-
 model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
@@ -175,28 +169,4 @@ model ScheduleSlot {
 model Setting {
   key   String @id
   value Json
-}
-
-/// Історія всіх змін у базі: кожен INSERT, UPDATE і DELETE у будь-якій таблиці.
-/// Заповнюють лише тригери PostgreSQL (міграція add_audit_log); записи не змінюються й не видаляються
-model AuditLog {
-  id             BigInt      @id @default(autoincrement())
-  tableName      String
-  /// Первинний ключ рядка як текст; складений ключ через ":" (ParentChild: "parentId:childId")
-  recordId       String?
-  action         AuditAction
-  /// UPDATE — змінені колонки; INSERT і DELETE — усі колонки рядка
-  changedColumns String[]
-  /// Рядок до зміни (UPDATE, DELETE), без чутливих колонок (passwordHash)
-  oldData        Json?
-  /// Рядок після зміни (INSERT, UPDATE), без чутливих колонок
-  newData        Json?
-  /// Хто змінив: User.id із withActor(); null — зміна без контексту користувача (seed, міграції)
-  actorUserId    Int?
-  /// Id транзакції PostgreSQL: зміни одного запиту мають однаковий txId
-  txId           BigInt
-  changedAt      DateTime    @default(now())
-
-  @@index([tableName, recordId])
-  @@index([changedAt])
 }

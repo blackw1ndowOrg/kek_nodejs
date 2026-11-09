@@ -136,10 +136,9 @@ describe('Children API (Supertest)', () => {
         .send(NEW_CHILD);
       expect(res.status).toBe(StatusCodes.CREATED);
       expect(res.body).toEqual(CHILD);
-      const [data, parentIds, actorUserId] = childrenRepository.create.mock.calls[0];
+      const [data, parentIds] = childrenRepository.create.mock.calls[0];
       expect(data.birthDate).toBeInstanceOf(Date);
       expect(parentIds).toEqual([7]);
-      expect(actorUserId).toBe(2); // хто створив — для історії змін
     });
 
     test('невалідне тіло -> 400', async () => {
@@ -185,7 +184,7 @@ describe('Children API (Supertest)', () => {
         .set('Authorization', tokenFor('PARENT'))
         .send({ notes: 'не любить гречку' });
       expect(res.status).toBe(StatusCodes.OK);
-      expect(childrenRepository.update).toHaveBeenCalledWith(5, { notes: 'не любить гречку' }, 12);
+      expect(childrenRepository.update).toHaveBeenCalledWith(5, { notes: 'не любить гречку' });
       expect(res.body).not.toHaveProperty('discountPercent');
     });
 
@@ -248,11 +247,10 @@ describe('Children API (Supertest)', () => {
         .set('Authorization', tokenFor('MANAGER', 2));
       expect(res.status).toBe(StatusCodes.NO_CONTENT);
       expect(res.body).toEqual({});
-      expect(childrenRepository.update).toHaveBeenCalledWith(
-        5,
-        { isActive: false, groupId: null },
-        2
-      );
+      expect(childrenRepository.update).toHaveBeenCalledWith(5, {
+        isActive: false,
+        groupId: null,
+      });
     });
 
     test('неіснуюча дитина -> 404', async () => {

@@ -1495,7 +1495,7 @@ paths:
   /api/v1/children/{childId}/absences/{absenceId}:
     delete:
       summary: Скасувати відсутність (PARENT — лише своя дитина, ADMIN, MANAGER)
-      description: Можна до 08:30 за Києвом у день відсутності. Стан до скасування й автор зберігаються в історії змін (AuditLog)
+      description: Можна до 08:30 за Києвом у день відсутності.
       tags:
         - Absences
       parameters:

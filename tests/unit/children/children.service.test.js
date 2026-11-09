@@ -93,8 +93,7 @@ describe('ChildrenService', () => {
       expect(repository.countParents).toHaveBeenCalledWith([7]);
       expect(repository.create).toHaveBeenCalledWith(
         { fullName: 'Іван', birthDate: data.birthDate },
-        [7],
-        2
+        [7]
       );
     });
 
@@ -161,28 +160,24 @@ describe('ChildrenService', () => {
       const { repository, service } = createService();
       await service.update(MANAGER, 5, { fullName: 'Олена', paymentPlan: 'YEARLY' });
       expect(repository.findById).toHaveBeenCalledWith(5, undefined);
-      expect(repository.update).toHaveBeenCalledWith(
-        5,
-        {
-          fullName: 'Олена',
-          paymentPlan: 'YEARLY',
-        },
-        2
-      );
+      expect(repository.update).toHaveBeenCalledWith(5, {
+        fullName: 'Олена',
+        paymentPlan: 'YEARLY',
+      });
     });
 
     test('батько змінює примітку своєї дитини й отримує відповідь без прихованих полів', async () => {
       const { repository, service } = createService();
       const child = await service.update(PARENT, 5, { notes: 'не любить гречку' });
       expect(repository.findById).toHaveBeenCalledWith(5, 12);
-      expect(repository.update).toHaveBeenCalledWith(5, { notes: 'не любить гречку' }, 12);
+      expect(repository.update).toHaveBeenCalledWith(5, { notes: 'не любить гречку' });
       expect(child).not.toHaveProperty('hasDeputyRelatives');
     });
 
     test('деактивація через update скидає groupId на null', async () => {
       const { repository, service } = createService();
       await service.update(MANAGER, 5, { isActive: false });
-      expect(repository.update).toHaveBeenCalledWith(5, { isActive: false, groupId: null }, 2);
+      expect(repository.update).toHaveBeenCalledWith(5, { isActive: false, groupId: null });
     });
 
     test('батько не може змінювати інші поля -> 403', async () => {
@@ -223,7 +218,7 @@ describe('ChildrenService', () => {
         const { repository, service } = createService();
         await service.update(MANAGER, 5, { birthDate: birth('2022-01-10') });
         expect(repository.findGroup).toHaveBeenCalledWith(3);
-        expect(repository.update).toHaveBeenCalledWith(5, { birthDate: birth('2022-01-10') }, 2);
+        expect(repository.update).toHaveBeenCalledWith(5, { birthDate: birth('2022-01-10') });
       });
 
       test('дитина без групи: перевіряється лише діапазон віку', async () => {
@@ -238,15 +233,11 @@ describe('ChildrenService', () => {
         const { repository, service } = createService();
         await service.update(MANAGER, 5, { birthDate: birth('2023-05-05'), isActive: false });
         expect(repository.findGroup).not.toHaveBeenCalled();
-        expect(repository.update).toHaveBeenCalledWith(
-          5,
-          {
-            birthDate: birth('2023-05-05'),
-            isActive: false,
-            groupId: null,
-          },
-          2
-        );
+        expect(repository.update).toHaveBeenCalledWith(5, {
+          birthDate: birth('2023-05-05'),
+          isActive: false,
+          groupId: null,
+        });
       });
 
       test('групу видалили між читанням дитини й перевіркою -> перевірка пропускається', async () => {
@@ -274,7 +265,7 @@ describe('ChildrenService', () => {
         const { repository, service } = createService();
         repository.findById.mockResolvedValueOnce(INACTIVE);
         await service.update(MANAGER, 5, { isActive: true });
-        expect(repository.update).toHaveBeenCalledWith(5, { isActive: true }, 2);
+        expect(repository.update).toHaveBeenCalledWith(5, { isActive: true });
       });
 
       test('разом із новою датою народження перевіряється нова дата', async () => {
@@ -305,7 +296,7 @@ describe('ChildrenService', () => {
     test('м’яке видалення: isActive = false і groupId = null', async () => {
       const { repository, service } = createService();
       await expect(service.deactivate(MANAGER, 5)).resolves.toBeUndefined();
-      expect(repository.update).toHaveBeenCalledWith(5, { isActive: false, groupId: null }, 2);
+      expect(repository.update).toHaveBeenCalledWith(5, { isActive: false, groupId: null });
     });
 
     test('неіснуюча дитина -> 404', async () => {
