@@ -1,6 +1,8 @@
+const { AsyncLocalStorage } = require('node:async_hooks');
 const { PrismaClient } = require('@prisma/client');
 
 const globalForPrisma = globalThis;
+const transactionStorage = new AsyncLocalStorage();
 
 function toClientModelName(model) {
   if (!model) return '';
@@ -51,7 +53,12 @@ function createStateHistoryExtension(baseClient) {
             return query(args);
           }
 
+          const txContext = transactionStorage.getStore();
           const clientProp = toClientModelName(model);
+          const readerClient =
+            typeof txContext?.tx?.[clientProp]?.findUnique === 'function'
+              ? txContext.tx
+              : baseClient;
           let beforeState = null;
 
           if (
@@ -59,8 +66,8 @@ function createStateHistoryExtension(baseClient) {
             args?.where
           ) {
             try {
-              if (typeof baseClient[clientProp]?.findUnique === 'function') {
-                beforeState = await baseClient[clientProp].findUnique({
+              if (typeof readerClient?.[clientProp]?.findUnique === 'function') {
+                beforeState = await readerClient[clientProp].findUnique({
                   where: args.where,
                 });
               }
@@ -80,16 +87,25 @@ function createStateHistoryExtension(baseClient) {
             extractEntityId(args?.where) ||
             null;
 
+          const historyEntry = {
+            entityName: model,
+            entityId,
+            action: operation,
+            beforeState: safeJsonSerialize(finalBeforeState),
+            afterState: safeJsonSerialize(afterState),
+          };
+
+          // Якщо операція виконується в межах інтерактивної транзакції — буферизуємо запис
+          // до моменту успішного завершення транзакції, щоб уникнути фантомних записів при rollback
+          if (Array.isArray(txContext?.pendingHistory)) {
+            txContext.pendingHistory.push(historyEntry);
+            return result;
+          }
+
           try {
             if (typeof baseClient.stateHistory?.create === 'function') {
               await baseClient.stateHistory.create({
-                data: {
-                  entityName: model,
-                  entityId,
-                  action: operation,
-                  beforeState: safeJsonSerialize(finalBeforeState),
-                  afterState: safeJsonSerialize(afterState),
-                },
+                data: historyEntry,
               });
             }
           } catch (historyErr) {
@@ -101,6 +117,45 @@ function createStateHistoryExtension(baseClient) {
       },
     },
   };
+}
+
+function wrapTransactionWithStateHistory(extendedClient, baseClient) {
+  if (typeof extendedClient?.$transaction !== 'function') {
+    return extendedClient;
+  }
+
+  const originalTransaction = extendedClient.$transaction.bind(extendedClient);
+
+  extendedClient.$transaction = async function (arg, options) {
+    if (typeof arg !== 'function') {
+      return originalTransaction(arg, options);
+    }
+
+    const pendingHistory = [];
+
+    return originalTransaction(async (tx) => {
+      const result = await transactionStorage.run({ tx, pendingHistory }, () => arg(tx));
+
+      const historyClient = typeof tx?.stateHistory?.create === 'function' ? tx : baseClient;
+
+      if (typeof historyClient?.stateHistory?.create === 'function') {
+        for (const entry of pendingHistory) {
+          try {
+            await historyClient.stateHistory.create({ data: entry });
+          } catch (historyErr) {
+            console.error(
+              `[StateHistory Error] ${entry.entityName}.${entry.action}:`,
+              historyErr.message
+            );
+          }
+        }
+      }
+
+      return result;
+    }, options);
+  };
+
+  return extendedClient;
 }
 
 function createClient() {
@@ -118,7 +173,8 @@ function createClient() {
     });
   }
 
-  return baseClient.$extends(createStateHistoryExtension(baseClient));
+  const extendedClient = baseClient.$extends(createStateHistoryExtension(baseClient));
+  return wrapTransactionWithStateHistory(extendedClient, baseClient);
 }
 
 const prisma = globalForPrisma.__prisma || createClient();
@@ -133,4 +189,6 @@ module.exports = {
   extractEntityId,
   safeJsonSerialize,
   createStateHistoryExtension,
+  wrapTransactionWithStateHistory,
+  transactionStorage,
 };

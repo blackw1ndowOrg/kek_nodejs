@@ -3,6 +3,7 @@ const {
   extractEntityId,
   safeJsonSerialize,
   createStateHistoryExtension,
+  wrapTransactionWithStateHistory,
 } = require('../../src/config/prisma');
 
 describe('StateHistory - Unit Tests', () => {
@@ -328,6 +329,159 @@ describe('StateHistory - Unit Tests', () => {
           entityId: null,
         }),
       });
+    });
+
+    test('не зберігає історію змін, якщо інтерактивна транзакція падає і виконує rollback', async () => {
+      const mockTx = {
+        stateHistory: {
+          create: jest.fn().mockResolvedValue({ id: 1 }),
+        },
+        child: {
+          findUnique: jest.fn(),
+        },
+      };
+
+      const mockExtendedClient = {
+        $transaction: jest.fn(async (cb) => cb(mockTx)),
+      };
+
+      wrapTransactionWithStateHistory(mockExtendedClient, mockBaseClient);
+
+      await expect(
+        mockExtendedClient.$transaction(async () => {
+          // Крок 1: успішне створення User всередині транзакції
+          await allOperations({
+            model: 'User',
+            operation: 'create',
+            args: { data: { email: 'staff@kg.local', role: 'TEACHER' } },
+            query: jest
+              .fn()
+              .mockResolvedValue({ id: 10, email: 'staff@kg.local', role: 'TEACHER' }),
+          });
+
+          // Крок 2: помилка при створенні Staff -> транзакція відкочується
+          throw new Error('Transaction rollback: unique constraint failed');
+        })
+      ).rejects.toThrow('Transaction rollback: unique constraint failed');
+
+      expect(mockTx.stateHistory.create).not.toHaveBeenCalled();
+      expect(mockBaseClient.stateHistory.create).not.toHaveBeenCalled();
+    });
+
+    test('зберігає буферизовану історію та читає beforeState через tx при успішному завершенні транзакції', async () => {
+      const txBeforeChild = { id: 7, fullName: 'Олексій', age: 4 };
+      const txAfterChild = { id: 7, fullName: 'Олексій', age: 5 };
+
+      const mockTx = {
+        stateHistory: {
+          create: jest.fn().mockResolvedValue({ id: 1 }),
+        },
+        child: {
+          findUnique: jest.fn().mockResolvedValueOnce(txBeforeChild),
+        },
+      };
+
+      const mockExtendedClient = {
+        $transaction: jest.fn(async (cb) => cb(mockTx)),
+      };
+
+      wrapTransactionWithStateHistory(mockExtendedClient, mockBaseClient);
+
+      const txResult = await mockExtendedClient.$transaction(async () => {
+        await allOperations({
+          model: 'User',
+          operation: 'create',
+          args: { data: { email: 'parent@kg.local', role: 'PARENT' } },
+          query: jest.fn().mockResolvedValue({ id: 15, email: 'parent@kg.local', role: 'PARENT' }),
+        });
+
+        // Поки транзакція ще триває, запис в історію ще не викликався
+        expect(mockTx.stateHistory.create).not.toHaveBeenCalled();
+
+        const updatedChild = await allOperations({
+          model: 'Child',
+          operation: 'update',
+          args: { where: { id: 7 }, data: { age: 5 } },
+          query: jest.fn().mockResolvedValue(txAfterChild),
+        });
+
+        return updatedChild;
+      });
+
+      expect(txResult).toEqual(txAfterChild);
+      expect(mockTx.child.findUnique).toHaveBeenCalledWith({ where: { id: 7 } });
+      expect(mockBaseClient.child.findUnique).not.toHaveBeenCalled();
+      expect(mockTx.stateHistory.create).toHaveBeenCalledTimes(2);
+      expect(mockTx.stateHistory.create).toHaveBeenNthCalledWith(1, {
+        data: {
+          entityName: 'User',
+          entityId: '15',
+          action: 'create',
+          beforeState: null,
+          afterState: { id: 15, email: 'parent@kg.local', role: 'PARENT' },
+        },
+      });
+      expect(mockTx.stateHistory.create).toHaveBeenNthCalledWith(2, {
+        data: {
+          entityName: 'Child',
+          entityId: '7',
+          action: 'update',
+          beforeState: txBeforeChild,
+          afterState: txAfterChild,
+        },
+      });
+    });
+
+    test('використовує baseClient.stateHistory у транзакції, якщо tx.stateHistory відсутній, та логує помилку без падіння', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      mockBaseClient.stateHistory.create.mockRejectedValueOnce(new Error('Tx flush error'));
+
+      const mockTxWithoutHistory = {};
+      const mockExtendedClient = {
+        $transaction: jest.fn(async (cb) => cb(mockTxWithoutHistory)),
+      };
+
+      wrapTransactionWithStateHistory(mockExtendedClient, mockBaseClient);
+
+      const res = await mockExtendedClient.$transaction(async () => {
+        return allOperations({
+          model: 'Child',
+          operation: 'create',
+          args: { data: { fullName: 'Марія' } },
+          query: jest.fn().mockResolvedValue({ id: 21, fullName: 'Марія' }),
+        });
+      });
+
+      expect(res).toEqual({ id: 21, fullName: 'Марія' });
+      expect(mockBaseClient.stateHistory.create).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[StateHistory Error]'),
+        'Tx flush error'
+      );
+      consoleErrorSpy.mockRestore();
+    });
+
+    test('пропускає batch-транзакції (масив промісів) напряму в оригінальний $transaction', async () => {
+      const originalTx = jest.fn().mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      const mockExtendedClient = {
+        $transaction: originalTx,
+      };
+
+      wrapTransactionWithStateHistory(mockExtendedClient, mockBaseClient);
+
+      const batchResult = await mockExtendedClient.$transaction(['p1', 'p2'], {
+        isolationLevel: 'Serializable',
+      });
+
+      expect(originalTx).toHaveBeenCalledWith(['p1', 'p2'], {
+        isolationLevel: 'Serializable',
+      });
+      expect(batchResult).toEqual([{ id: 1 }, { id: 2 }]);
+    });
+
+    test('безпечно повертає клієнт, якщо $transaction не є функцією', () => {
+      const plainObj = { user: {} };
+      expect(wrapTransactionWithStateHistory(plainObj, mockBaseClient)).toBe(plainObj);
     });
   });
 
