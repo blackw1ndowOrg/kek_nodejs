@@ -46,12 +46,16 @@ describe('calculateChildMonthlyTuition', () => {
     expect(calculateChildMonthlyTuition(childYearly)).toBe(1056000);
   });
 
-  test('підтримує кастомні налаштування тарифу та знижок', () => {
+  test('підтримує кастомні налаштування тарифу та зберігає розрахунок без обмеження discountLevels', () => {
     expect(calculateChildMonthlyTuition(0, 'YEARLY', 2000000, [10], 15)).toBe(1700000);
     // Виклик зі скороченим синтаксисом (child, tuition, discountLevels, yearlyDiscount)
     const childYearly = { discountPercent: 10, paymentPlan: 'YEARLY' };
     // 2 000 000 * 0.90 (пільга) = 1 800 000; 1 800 000 * 0.85 (15% річна знижка) = 1 530 000
     expect(calculateChildMonthlyTuition(childYearly, 2000000, [10, 20], 15)).toBe(1530000);
+
+    // Збережена пільга 30% при discountLevels [10, 20]
+    const childOldDiscount = { discountPercent: 30, paymentPlan: 'MONTHLY' };
+    expect(calculateChildMonthlyTuition(childOldDiscount, 1500000, [10, 20])).toBe(1050000);
   });
 });
 
@@ -65,8 +69,12 @@ describe('tuitionMonthly (копійки)', () => {
     expect(tuitionMonthly(discount)).toBe(expected);
   });
 
-  test.each([15, 40, -10, '20', undefined])('знижка %p -> BadRequestError', (discount) => {
+  test.each([-10, 105, 3.5, '20', undefined, null])('невалідна знижка %p -> BadRequestError', (discount) => {
     expect(() => tuitionMonthly(discount)).toThrow(BadRequestError);
+  });
+
+  test('зберігає розрахунок для збереженої знижки 30% навіть якщо discountLevels [10, 20]', () => {
+    expect(tuitionMonthly(30, 1500000, [10, 20])).toBe(1050000);
   });
 });
 
@@ -124,7 +132,7 @@ describe('yearlyTotal', () => {
 
   test('невалідні дані -> BadRequestError', () => {
     expect(() => yearlyTotal(6, 0)).toThrow(BadRequestError);
-    expect(() => yearlyTotal(4, 15)).toThrow(BadRequestError);
+    expect(() => yearlyTotal(4, -5)).toThrow(BadRequestError);
   });
 });
 
@@ -133,11 +141,11 @@ describe('значення з налаштувань передаються па
     expect([MIN_AGE, MAX_AGE]).toEqual([2, 5]);
   });
 
-  test('tuitionMonthly: інша ціна й інші рівні пільг, 0 дозволено завжди', () => {
+  test('tuitionMonthly: розрахунок без обмеження за списком discountLevels', () => {
     expect(tuitionMonthly(10, 1000000)).toBe(900000);
     expect(tuitionMonthly(50, 1500000, [50])).toBe(750000);
     expect(tuitionMonthly(0, 1500000, [50])).toBe(1500000);
-    expect(() => tuitionMonthly(10, 1500000, [50])).toThrow(BadRequestError);
+    expect(tuitionMonthly(10, 1500000, [50])).toBe(1350000);
   });
 
   test('mealPerDay: інша база і крок', () => {
