@@ -1,0 +1,29 @@
+$kind: http-request
+name: 2. Нова вихователька з акаунтом (менеджер)
+url: "{{baseUrl}}/staff"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "fullName": "Тестова Вихователька",
+      "type": "EDUCATOR",
+      "user": {
+        "email": "educator.demo{{demoSuffix}}@kindergarten.local",
+        "password": "{{seedPassword}}"
+      }
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{managerToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 201', () => pm.response.to.have.status(201));
+      pm.collectionVariables.set('demoEducatorId', pm.response.json().id);
+      pm.collectionVariables.set('demoEducatorEmail', `educator.demo${pm.collectionVariables.get('demoSuffix')}@kindergarten.local`);
+    language: text/javascript
+order: 2000

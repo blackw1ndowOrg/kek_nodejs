@@ -1,0 +1,22 @@
+$kind: http-request
+url: "{{baseUrl}}/children/{{demoChildId}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "notes": "Алергія на горіхи"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{demoParentToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      pm.test('Примітку збережено', () => pm.expect(pm.response.json().notes).to.eql('Алергія на горіхи'));
+    language: text/javascript
+order: 11000

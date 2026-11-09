@@ -1,0 +1,23 @@
+$kind: http-request
+name: Кімната групи замість кабінету → 400
+url: "{{baseUrl}}/clubs"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Гурток Тест {{demoSuffix}}",
+      "roomId": {{groupSonechkoRoomId}},
+      "teacherId": {{clubTeacherId}}
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: pm.test('Статус 400', () => pm.response.to.have.status(400));
+    language: text/javascript
+order: 5000

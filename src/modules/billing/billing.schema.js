@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { MONTH_PATTERN } = require('../../domain/absence');
 
 const PAYMENT_PLANS = ['MONTHLY', 'YEARLY'];
 
@@ -8,6 +9,10 @@ const childParamsSchema = z.object({
 
 const getChildBillingSchema = z.object({
   params: childParamsSchema,
+  query: z.object({
+    // місяць, за який рахувати харчування з урахуванням відсутностей; за замовчуванням поточний
+    month: z.string().regex(MONTH_PATTERN, 'month має бути у форматі YYYY-MM').optional(),
+  }),
 });
 
 const payChildSchema = z.object({

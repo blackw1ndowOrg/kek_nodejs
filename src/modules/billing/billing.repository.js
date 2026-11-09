@@ -22,6 +22,14 @@ class BillingRepository {
     });
   }
 
+  /** Відсутності дитини в межах [from, to): дата й момент повідомлення */
+  async findAbsences(childId, { from, to }) {
+    return this.db.absence.findMany({
+      where: { childId, date: { gte: from, lt: to } },
+      select: { date: true, notifiedAt: true },
+    });
+  }
+
   /**
    * Updates paidUntil only if it matches the expected date (optimistic concurrency check to prevent double payment).
    *

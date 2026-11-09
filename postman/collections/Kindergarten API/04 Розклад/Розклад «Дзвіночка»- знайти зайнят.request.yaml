@@ -1,0 +1,22 @@
+$kind: http-request
+name: "Розклад «Дзвіночка»: знайти зайнятий кабінет"
+url: "{{baseUrl}}/schedule/groups/{{groupDzvinochokId}}"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const sun = JSON.parse(pm.collectionVariables.get('sonechkoSlots'));
+      const bell = pm.response.json().slots;
+      const lesson = sun.find((s) => s.activity === 'CLUB' && s.dayOfWeek === 1);
+      const sameTime = bell.find((s) => s.dayOfWeek === 1 && s.startMinute === lesson.startMinute);
+      pm.test('У цей час у «Дзвіночка» інший гурток', () => pm.expect(sameTime.clubId).to.not.eql(lesson.clubId));
+      pm.collectionVariables.set('lessonSlotId', lesson.id);
+      pm.collectionVariables.set('busyClubId', sameTime.clubId);
+      pm.collectionVariables.set('mealSlotId', sun.find((s) => s.activity === 'MEAL').id);
+    language: text/javascript
+order: 4000

@@ -1,0 +1,19 @@
+$kind: http-request
+url: "{{baseUrl}}/billing/children/{{demoChildId}}"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{demoParentToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const bill = pm.response.json();
+      pm.test('Вік групи 3 роки', () => pm.expect(bill.groupAge).to.eql(3));
+      pm.test('Навчання: 15 000 · 0,8 = 12 000 грн', () => pm.expect(bill.monthly.tuition).to.eql(1200000));
+      pm.test('Харчування: 400 грн · 21 день = 8 400 грн', () => pm.expect(bill.monthly.meals).to.eql(840000));
+      pm.test('Разом 20 400 грн', () => pm.expect(bill.monthly.total).to.eql(2040000));
+      pm.test('Ще не оплачено', () => pm.expect(bill.isPaid).to.eql(false));
+    language: text/javascript
+order: 12000

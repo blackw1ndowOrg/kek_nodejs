@@ -1,0 +1,24 @@
+$kind: http-request
+name: "Логін: вихователька групи «Сонечко»"
+url: "{{baseUrl}}/auth/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "email": "{{educatorEmail}}",
+      "password": "{{seedPassword}}"
+    }
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const body = pm.response.json();
+      pm.test('Є токен', () => pm.expect(body.token).to.be.a('string'));
+      if (body.token) pm.collectionVariables.set('educatorToken', body.token);
+    language: text/javascript
+order: 4000

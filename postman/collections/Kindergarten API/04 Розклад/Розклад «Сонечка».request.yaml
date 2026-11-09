@@ -1,0 +1,36 @@
+$kind: http-request
+url: "{{baseUrl}}/schedule/groups/{{groupSonechkoId}}"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const slots = pm.response.json().slots;
+      const lessons = slots.filter((s) => s.activity === 'CLUB');
+      pm.test('15 занять на тиждень', () => pm.expect(lessons).to.have.length(15));
+      pm.test('День 08:30–18:00 (вимога 03.11)', () => {
+        pm.expect(Math.min(...slots.map((s) => s.startMinute))).to.eql(510);
+        pm.expect(Math.max(...slots.map((s) => s.endMinute))).to.eql(1080);
+      });
+      pm.test('Заняття лише у вікнах 09:00–12:00 і 14:00–17:45', () =>
+        lessons.forEach((s) => pm.expect(
+          (s.startMinute >= 540 && s.endMinute <= 720) || (s.startMinute >= 840 && s.endMinute <= 1065)
+        ).to.be.true));
+      pm.test('Прогулянка 1 година на день', () => [1, 2, 3, 4, 5].forEach((day) => {
+        const walk = slots.filter((s) => s.dayOfWeek === day && s.activity === 'WALK')
+          .reduce((sum, s) => sum + s.endMinute - s.startMinute, 0);
+        pm.expect(walk).to.eql(60);
+      }));
+      pm.test('Гурток не повторюється в один день', () => {
+        [1, 2, 3, 4, 5].forEach((day) => {
+          const clubs = lessons.filter((s) => s.dayOfWeek === day).map((s) => s.clubId);
+          pm.expect(new Set(clubs).size).to.eql(clubs.length);
+        });
+      });
+      pm.collectionVariables.set('sonechkoSlots', JSON.stringify(slots));
+    language: text/javascript
+order: 3000

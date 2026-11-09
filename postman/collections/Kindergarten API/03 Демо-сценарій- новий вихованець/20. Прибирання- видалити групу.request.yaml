@@ -1,0 +1,13 @@
+$kind: http-request
+name: "20. Прибирання: видалити групу"
+url: "{{baseUrl}}/groups/{{demoGroupId}}"
+method: DELETE
+auth:
+  type: bearer
+  credentials:
+    token: "{{managerToken}}"
+scripts:
+  - type: afterResponse
+    code: pm.test('Статус 204', () => pm.response.to.have.status(204));
+    language: text/javascript
+order: 20000

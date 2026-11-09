@@ -1,0 +1,13 @@
+$kind: http-request
+name: Видалити виховательку з групою → 409
+url: "{{baseUrl}}/staff/{{groupSonechkoEducatorId}}"
+method: DELETE
+auth:
+  type: bearer
+  credentials:
+    token: "{{managerToken}}"
+scripts:
+  - type: afterResponse
+    code: pm.test('Статус 409', () => pm.response.to.have.status(409));
+    language: text/javascript
+order: 16000

@@ -1,0 +1,26 @@
+$kind: http-request
+url: "{{baseUrl}}/analytics/profit"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const r = pm.response.json();
+      pm.test('4 групи, 20 кімнат', () => {
+        pm.expect(r.groupsCount).to.eql(4);
+        pm.expect(r.roomsCount).to.eql(20);
+      });
+      pm.test('Дохід садка = сума доходів груп', () =>
+        pm.expect(r.income.total.kopiykas).to.eql(r.groups.reduce((s, g) => s + g.totalIncome.kopiykas, 0)));
+      pm.test('Оренда всіх 20 кімнат = 1 000 000 грн, overhead (вимога 03.11)', () =>
+        pm.expect(r.expenses.roomsRent.kopiykas).to.eql(20 * 5000000));
+      pm.test('Витрати = зарплати + оренда', () =>
+        pm.expect(r.expenses.total.kopiykas).to.eql(r.expenses.staffSalaries.kopiykas + r.expenses.roomsRent.kopiykas));
+      pm.test('Профіт = дохід − витрати', () =>
+        pm.expect(r.profit.kopiykas).to.eql(r.income.total.kopiykas - r.expenses.total.kopiykas));
+    language: text/javascript
+order: 7000

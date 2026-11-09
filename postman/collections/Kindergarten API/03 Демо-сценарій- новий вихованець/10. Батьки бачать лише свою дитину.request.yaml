@@ -1,0 +1,19 @@
+$kind: http-request
+url: "{{baseUrl}}/children"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{demoParentToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const children = pm.response.json().children;
+      pm.test('Одна дитина — наша', () => {
+        pm.expect(children).to.have.length(1);
+        pm.expect(children[0].id).to.eql(Number(pm.collectionVariables.get('demoChildId')));
+      });
+      pm.test('Знижку не видно', () => pm.expect(children[0]).to.not.have.property('discountPercent'));
+    language: text/javascript
+order: 10000
