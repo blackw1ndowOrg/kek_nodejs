@@ -111,8 +111,7 @@ function calculateChildMonthlyTuition(
     if (typeof paymentPlan === 'number') {
       actualTuition = paymentPlan;
       actualDiscountLevels = Array.isArray(tuition) ? tuition : [10, 20, 30];
-      actualYearlyDiscountPercent =
-        typeof discountLevels === 'number' ? discountLevels : 12;
+      actualYearlyDiscountPercent = typeof discountLevels === 'number' ? discountLevels : 12;
     }
   }
 
