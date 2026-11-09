@@ -116,9 +116,9 @@ describe('Analytics Schema Validation', () => {
     });
 
     test('викидає помилку якщо targetChildrenCount не є числом з власним повідомленням Zod 4', () => {
-      expect(() =>
-        forecastSchema.parse({ body: { targetChildrenCount: 'not-a-number' } })
-      ).toThrow(/Target children count must be a number/i);
+      expect(() => forecastSchema.parse({ body: { targetChildrenCount: 'not-a-number' } })).toThrow(
+        /Target children count must be a number/i
+      );
     });
 
     test('порожнє тіло або відсутність тіла проходить валідацію за замовчуванням', () => {
@@ -166,14 +166,18 @@ describe('Analytics Schema Validation', () => {
     test('коерсить коректні строкові значення вікового попиту та валідує невалідні з власним повідомленням Zod 4', () => {
       const parsed = forecastSchema.parse({ body: { 2: '21', 3: 20 } });
       expect(parsed.body[2]).toBe(21);
-      expect(() => forecastSchema.parse({ body: { 2: '   ' } })).toThrow(/Demand must be a number/i);
+      expect(() => forecastSchema.parse({ body: { 2: '   ' } })).toThrow(
+        /Demand must be a number/i
+      );
       expect(() => forecastSchema.parse({ body: { 2: 'not-a-number' } })).toThrow(
         /Demand must be a number/i
       );
     });
 
     test('викидає помилку при від’ємному віковому попиті', () => {
-      expect(() => forecastSchema.parse({ body: { 2: -5 } })).toThrow(/Demand must be non-negative/i);
+      expect(() => forecastSchema.parse({ body: { 2: -5 } })).toThrow(
+        /Demand must be non-negative/i
+      );
     });
 
     test('викидає помилку при невалідних attendanceRate та threshold', () => {
