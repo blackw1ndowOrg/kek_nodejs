@@ -96,6 +96,8 @@ describe('AnalyticsService', () => {
         id: 1,
         name: 'Сонечко',
         roomId: 10,
+        educatorId: 1,
+        assistantId: 2,
         room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
         children: [],
       });
@@ -119,6 +121,144 @@ describe('AnalyticsService', () => {
       // Профіт: 0 - 70 000 = -70 000 грн
       expect(res.profit.uah).toBe(-70000);
       expect(res.profit.kopiykas).toBe(-7000000);
+    });
+
+    test('розраховує профіт для групи без помічника (assistantId: null) -> assistantSalary = 0', async () => {
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 1,
+        name: 'Сонечко',
+        roomId: 10,
+        educatorId: 1,
+        assistantId: null,
+        room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
+        children: [{ id: 1, discountPercent: 0, paymentPlan: 'MONTHLY' }],
+      });
+
+      const res = await service.getGroupProfit(1);
+
+      expect(res.expenses.educatorSalary.uah).toBe(2000);
+      expect(res.expenses.assistantSalary.uah).toBe(0);
+      expect(res.expenses.assistantSalary.kopiykas).toBe(0);
+      expect(res.expenses.roomRent.uah).toBe(50000);
+      expect(res.expenses.total.uah).toBe(52000);
+    });
+
+    test('розраховує профіт для групи без вихователя (educatorId: null) -> educatorSalary = 0', async () => {
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 1,
+        name: 'Сонечко',
+        roomId: 10,
+        educatorId: null,
+        assistantId: 2,
+        room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
+        children: [{ id: 1, discountPercent: 0, paymentPlan: 'MONTHLY' }],
+      });
+
+      const res = await service.getGroupProfit(1);
+
+      expect(res.expenses.educatorSalary.uah).toBe(0);
+      expect(res.expenses.educatorSalary.kopiykas).toBe(0);
+      expect(res.expenses.assistantSalary.uah).toBe(20000);
+      expect(res.expenses.roomRent.uah).toBe(50000);
+      expect(res.expenses.total.uah).toBe(70000);
+    });
+
+    test('розраховує профіт для групи без персоналу (educatorId: null, assistantId: null) -> зарплати = 0', async () => {
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 1,
+        name: 'Сонечко',
+        roomId: 10,
+        educatorId: null,
+        assistantId: null,
+        room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
+        children: [{ id: 1, discountPercent: 0, paymentPlan: 'MONTHLY' }],
+      });
+
+      const res = await service.getGroupProfit(1);
+
+      expect(res.expenses.educatorSalary.uah).toBe(0);
+      expect(res.expenses.assistantSalary.uah).toBe(0);
+      expect(res.expenses.roomRent.uah).toBe(50000);
+      expect(res.expenses.total.uah).toBe(50000);
+    });
+
+    test('розраховує профіт для групи з неактивним вихователем (educator.isActive: false) -> educatorSalary = 0', async () => {
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 1,
+        name: 'Сонечко',
+        roomId: 10,
+        educatorId: 1,
+        educator: { id: 1, isActive: false },
+        assistantId: 2,
+        assistant: { id: 2, isActive: true },
+        room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
+        children: [{ id: 1, discountPercent: 0, paymentPlan: 'MONTHLY' }],
+      });
+
+      const res = await service.getGroupProfit(1);
+
+      expect(res.expenses.educatorSalary.uah).toBe(0);
+      expect(res.expenses.educatorSalary.kopiykas).toBe(0);
+      expect(res.expenses.assistantSalary.uah).toBe(20000);
+    });
+
+    test('розраховує профіт для групи з неактивним помічником (assistant.isActive: false) -> assistantSalary = 0', async () => {
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 1,
+        name: 'Сонечко',
+        roomId: 10,
+        educatorId: 1,
+        educator: { id: 1, isActive: true },
+        assistantId: 2,
+        assistant: { id: 2, isActive: false },
+        room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
+        children: [{ id: 1, discountPercent: 0, paymentPlan: 'MONTHLY' }],
+      });
+
+      const res = await service.getGroupProfit(1);
+
+      expect(res.expenses.educatorSalary.uah).toBe(2000);
+      expect(res.expenses.assistantSalary.uah).toBe(0);
+      expect(res.expenses.assistantSalary.kopiykas).toBe(0);
+    });
+
+    test('isStaffActive: коректно розпізнає співробітника як активного, якщо реляція завантажена без поля isActive', async () => {
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 1,
+        name: 'Сонечко',
+        roomId: 10,
+        educatorId: 1,
+        educator: { id: 1, fullName: 'Марія' }, // без поля isActive
+        assistantId: 2,
+        assistant: { id: 2, fullName: 'Олена' }, // без поля isActive
+        room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
+        children: [{ id: 1, discountPercent: 0, paymentPlan: 'MONTHLY' }],
+      });
+
+      const res = await service.getGroupProfit(1);
+
+      expect(res.expenses.educatorSalary.uah).toBe(2000);
+      expect(res.expenses.assistantSalary.uah).toBe(20000);
+    });
+
+    test('коректно розраховує зарплати якщо children=undefined, але є _count з кількістю дітей', async () => {
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 1,
+        name: 'Сонечко',
+        roomId: 10,
+        educatorId: 1,
+        assistantId: 2,
+        room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
+        children: undefined,
+        _count: { children: 5 },
+      });
+
+      const res = await service.getGroupProfit(1);
+
+      expect(res.childrenCount).toBe(5);
+      expect(res.expenses.educatorSalary.uah).toBe(10000); // 5 * 2 000 = 10 000 грн
+      expect(res.expenses.assistantSalary.uah).toBe(20000);
+      expect(res.income.tuition.uah).toBe(0);
     });
 
     test('розраховує профіт для групи з 15 дітьми та різними пільгами', async () => {
@@ -148,6 +288,8 @@ describe('AnalyticsService', () => {
         id: 2,
         name: 'Чомусики',
         roomId: 12,
+        educatorId: 1,
+        assistantId: 2,
         room: { id: 12, name: 'Кімната 12', monthlyCost: 5000000 },
         children,
       });
@@ -210,6 +352,8 @@ describe('AnalyticsService', () => {
         name: 'Чомусики',
         age: 3,
         roomId: 7,
+        educatorId: 1,
+        assistantId: 2,
         room: { id: 7, name: 'Кімната 7', monthlyCost: 5000000 },
         children: [
           { id: 1, discountPercent: 0 },
@@ -342,6 +486,8 @@ describe('AnalyticsService', () => {
         {
           id: 1,
           name: 'Сонечко',
+          educatorId: 1,
+          assistantId: 1,
           room: { id: 1, monthlyCost: 5000000 },
           children: activeChildren.filter((c) => c.groupId === 1),
           _count: { children: 10 },
@@ -349,6 +495,8 @@ describe('AnalyticsService', () => {
         {
           id: 2,
           name: 'Дзвіночок',
+          educatorId: 2,
+          assistantId: 2,
           room: { id: 2, monthlyCost: 5000000 },
           children: activeChildren.filter((c) => c.groupId === 2),
           _count: { children: 14 },
@@ -416,8 +564,6 @@ describe('AnalyticsService', () => {
       expect(res.rooms.cost.operating.uah).toBe(350000);
       expect(res.rooms.cost.idle.uah).toBe(650000);
       expect(res.rooms.cost.total.uah).toBe(1000000);
-      expect(res.rooms.cost.idle.uah).toBe(650000);
-      expect(res.rooms.cost.total.uah).toBe(1000000);
     });
 
     test('враховує річну знижку 12% для дітей з paymentPlan: YEARLY у загальному профіті', async () => {
@@ -450,12 +596,137 @@ describe('AnalyticsService', () => {
         {
           id: 1,
           name: 'Без кімнати',
+          educatorId: 1,
+          assistantId: 2,
           room: null,
           children: [],
         },
       ]);
       const res = await service.getTotalProfit();
       expect(res.groups[0].expenses.uah).toBe(70000); // 0 + 20000 + 50000
+    });
+
+    test('група без помічника: у загальних витратах садка зарплата помічника = 0', async () => {
+      mockRepo.findAllActiveChildren.mockResolvedValue([{ id: 1, discountPercent: 0, groupId: 1 }]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
+        {
+          id: 1,
+          name: 'Сонечко',
+          educatorId: 1,
+          assistantId: null, // Без помічника
+          room: { id: 1, monthlyCost: 5000000 },
+          children: [{ id: 1, discountPercent: 0, groupId: 1 }],
+          _count: { children: 1 },
+        },
+      ]);
+      mockRepo.countActiveStaffByType = jest.fn().mockResolvedValue({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 1,
+        ASSISTANT: 0,
+      });
+
+      const res = await service.getTotalProfit();
+
+      // Зарплата помічників = 0 грн (як у садка, так і в групі)
+      expect(res.expenses.assistantsSalary.uah).toBe(0);
+      expect(res.expenses.assistantsSalary.kopiykas).toBe(0);
+      expect(res.groups[0].expenses.uah).toBe(52000); // 2000 вихователь + 0 помічник + 50000 оренда
+      expect(res.assistantsCount).toBe(0);
+      expect(res.educatorsCount).toBe(1);
+    });
+
+    test('група без вихователя: у загальних витратах садка зарплата вихователя = 0', async () => {
+      mockRepo.findAllActiveChildren.mockResolvedValue([{ id: 1, discountPercent: 0, groupId: 1 }]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
+        {
+          id: 1,
+          name: 'Сонечко',
+          educatorId: null, // Без вихователя
+          assistantId: 2,
+          room: { id: 1, monthlyCost: 5000000 },
+          children: [{ id: 1, discountPercent: 0, groupId: 1 }],
+          _count: { children: 1 },
+        },
+      ]);
+      mockRepo.countActiveStaffByType = jest.fn().mockResolvedValue({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 0,
+        ASSISTANT: 1,
+      });
+
+      const res = await service.getTotalProfit();
+
+      expect(res.expenses.educatorsSalary.uah).toBe(0);
+      expect(res.expenses.educatorsSalary.kopiykas).toBe(0);
+      expect(res.expenses.assistantsSalary.uah).toBe(20000);
+      expect(res.groups[0].expenses.uah).toBe(70000); // 0 вихователь + 20000 помічник + 50000 оренда
+      expect(res.educatorsCount).toBe(0);
+      expect(res.assistantsCount).toBe(1);
+    });
+
+    test('архітектурні інваріанти садка: сума доходів груп = загальний дохід, зарплати збігаються, різниця профітів = оверхед', async () => {
+      const activeChildren = [
+        { id: 1, discountPercent: 0, groupId: 1 },
+        { id: 2, discountPercent: 10, groupId: 1 },
+        { id: 3, discountPercent: 0, groupId: 2 },
+      ];
+      const groups = [
+        {
+          id: 1,
+          name: 'Група з повним складом',
+          age: 2,
+          educatorId: 10,
+          assistantId: 20,
+          room: { id: 1, monthlyCost: 5000000 },
+          children: [activeChildren[0], activeChildren[1]],
+          _count: { children: 2 },
+        },
+        {
+          id: 2,
+          name: 'Група без помічника',
+          age: 3,
+          educatorId: 11,
+          assistantId: null,
+          room: { id: 2, monthlyCost: 5000000 },
+          children: [activeChildren[2]],
+          _count: { children: 1 },
+        },
+      ];
+
+      mockRepo.findAllActiveChildren.mockResolvedValue(activeChildren);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue(groups);
+      mockRepo.countActiveStaffByType = jest.fn().mockResolvedValue({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 2,
+        ASSISTANT: 1,
+      });
+
+      const res = await service.getTotalProfit();
+
+      // Інваріант 1: Сума доходів груп = загальний дохід садка
+      const sumGroupsIncome = res.groups.reduce((acc, g) => acc + g.income.uah, 0);
+      expect(res.income.total.uah).toBe(sumGroupsIncome);
+
+      // Інваріант 2: Сума зарплат вихователів у групах = totalEducatorsSalary
+      const sumEducatorSalaries = 2 * 2000 + 1 * 2000; // 4000 + 2000 = 6000 грн
+      expect(res.expenses.educatorsSalary.uah).toBe(sumEducatorSalaries);
+
+      // Інваріант 3: Сума зарплат помічників у групах = totalAssistantsSalary (оскільки вільних немає: 1 призначений і 1 у штаті)
+      expect(res.expenses.assistantsSalary.uah).toBe(20000);
+
+      // Інваріант 4: Загальний прибуток = загальний дохід - загальні витрати
+      expect(res.profit.uah).toBe(res.income.total.uah - res.expenses.total.uah);
+
+      // Інваріант 5: Різниця між сумою профітів груп та загальним профітом садка строго дорівнює оверхеду (гуртківці + менеджер + негрупова оренда)
+      const sumGroupsProfit = res.groups.reduce((acc, g) => acc + g.profit.uah, 0);
+      const overhead =
+        res.expenses.clubTeachersSalary.uah +
+        res.expenses.managerSalary.uah +
+        (res.expenses.roomsRent.uah - 2 * 50000); // 18 негрупових кімнат по 50 000 = 900 000 грн
+      expect(sumGroupsProfit - res.profit.uah).toBe(overhead);
     });
 
     test('враховує фактичну кількість персоналу з таблиці Staff у БД через countActiveStaffByType', async () => {
@@ -484,6 +755,8 @@ describe('AnalyticsService', () => {
         {
           id: 1,
           name: 'Сонечко',
+          educatorId: 1,
+          assistantId: 1,
           room: null,
           children: [],
         },
@@ -502,6 +775,70 @@ describe('AnalyticsService', () => {
       // 1 помічник у групі (0 дітей: 20 000 грн) + 2 вільних помічники по 20 000 грн = 60 000 грн
       expect(res.expenses.assistantsSalary.uah).toBe(60000);
       expect(res.expenses.assistantsSalary.kopiykas).toBe(6000000);
+    });
+
+    test('getTotalProfit: не нараховує зарплату в групі для неактивного помічника та враховує активних як вільних', async () => {
+      mockRepo.findAllActiveChildren.mockResolvedValue([]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
+        {
+          id: 1,
+          name: 'Сонечко',
+          educatorId: 1,
+          educator: { id: 1, isActive: true },
+          assistantId: 2,
+          assistant: { id: 2, isActive: false }, // Неактивний закріплений помічник
+          room: null,
+          children: [],
+        },
+      ]);
+      mockRepo.countActiveStaffByType = jest.fn().mockResolvedValue({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 1,
+        ASSISTANT: 1, // 1 активний помічник у штаті (який не закріплений як активний)
+      });
+
+      const res = await service.getTotalProfit();
+
+      // У групі витрати помічника = 0
+      expect(res.groups[0].expenses.uah).toBe(50000); // 0 вихователь (0 дітей) + 0 помічник + 50000 оренда
+      // Загалом: 0 у групі + 1 вільний помічник * 20 000 = 20 000 грн
+      expect(res.expenses.assistantsSalary.uah).toBe(20000);
+    });
+
+    test('getTotalProfit: захист Math.max(0, ...) при assistantsCount < assignedActiveAssistantsCount', async () => {
+      mockRepo.findAllActiveChildren.mockResolvedValue([]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
+        {
+          id: 1,
+          name: 'Група 1',
+          educatorId: 1,
+          assistantId: 1,
+          room: null,
+          children: [],
+        },
+        {
+          id: 2,
+          name: 'Група 2',
+          educatorId: 2,
+          assistantId: 2,
+          room: null,
+          children: [],
+        },
+      ]);
+      // Наприклад, у БД за Staff лише 1 активний помічник, але в 2 групах закріплені помічники
+      mockRepo.countActiveStaffByType = jest.fn().mockResolvedValue({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 2,
+        ASSISTANT: 1,
+      });
+
+      const res = await service.getTotalProfit();
+
+      // assignedActiveAssistants = 2, але staffCounts.ASSISTANT = 1 -> freeAssistants = Math.max(0, 1 - 2) = 0
+      // 2 * 20 000 грн (по групах) + 0 вільних = 40 000 грн
+      expect(res.expenses.assistantsSalary.uah).toBe(40000);
     });
 
     test('використовує дефолтні значення якщо countActiveStaffByType повертає неповний об’єкт', async () => {

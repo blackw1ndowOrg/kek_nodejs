@@ -15,6 +15,10 @@ describe('Staff Integration Tests (Supertest)', () => {
     });
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   const adminToken = jwt.sign({ id: 1, email: 'admin@kg.local', role: 'ADMIN' }, config.jwtSecret, {
     expiresIn: '30m',
   });
@@ -194,16 +198,18 @@ describe('Staff Integration Tests (Supertest)', () => {
 
   describe('GET /api/v1/staff/:id/salary', () => {
     test('повертає 200 та розрахунок зарплати вихователя', async () => {
-      jest.spyOn(staffRepository, 'findById').mockResolvedValueOnce({
+      const mockStaff = {
         id: 10,
         fullName: 'Марія Вихователь',
         type: 'EDUCATOR',
         isActive: true,
         educatorOf: {
           name: 'Сонечко',
-          children: new Array(15).fill({ id: 1 }),
+          _count: { children: 15 },
         },
-      });
+      };
+      jest.spyOn(staffRepository, 'findWithActiveChildrenCount').mockResolvedValueOnce(mockStaff);
+      jest.spyOn(staffRepository, 'findById').mockResolvedValueOnce(mockStaff);
 
       const res = await request(app)
         .get('/api/v1/staff/10/salary')
@@ -212,6 +218,49 @@ describe('Staff Integration Tests (Supertest)', () => {
       expect(res.status).toBe(StatusCodes.OK);
       expect(res.body.salary).toBe(3900000);
       expect(res.body.details.childrenCount).toBe(15);
+    });
+
+    test('повертає 200 та розрахунок зарплати помічника з активними дітьми через _count', async () => {
+      const mockStaff = {
+        id: 11,
+        fullName: 'Ольга Помічник',
+        type: 'ASSISTANT',
+        isActive: true,
+        assistantOf: {
+          name: 'Сонечко',
+          _count: { children: 14 },
+        },
+      };
+      jest.spyOn(staffRepository, 'findWithActiveChildrenCount').mockResolvedValueOnce(mockStaff);
+      jest.spyOn(staffRepository, 'findById').mockResolvedValueOnce(mockStaff);
+
+      const res = await request(app)
+        .get('/api/v1/staff/11/salary')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.salary).toBe(2600000); // 20k + 2 * 3k = 26k грн
+      expect(res.body.details.childrenCount).toBe(14);
+    });
+
+    test('повертає 200 та salary = 0 для неактивного співробітника', async () => {
+      const mockStaff = {
+        id: 12,
+        fullName: 'Іван Неактивний',
+        type: 'EDUCATOR',
+        isActive: false,
+      };
+      jest.spyOn(staffRepository, 'findWithActiveChildrenCount').mockResolvedValueOnce(mockStaff);
+      jest.spyOn(staffRepository, 'findById').mockResolvedValueOnce(mockStaff);
+
+      const res = await request(app)
+        .get('/api/v1/staff/12/salary')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.salary).toBe(0);
+      expect(res.body.isActive).toBe(false);
+      expect(res.body.details.childrenCount).toBeNull();
     });
 
     test('повертає 403 для ролі TEACHER', async () => {

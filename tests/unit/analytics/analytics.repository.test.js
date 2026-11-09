@@ -46,6 +46,20 @@ describe('AnalyticsRepository', () => {
           name: true,
           age: true,
           roomId: true,
+          educatorId: true,
+          assistantId: true,
+          educator: {
+            select: {
+              id: true,
+              isActive: true,
+            },
+          },
+          assistant: {
+            select: {
+              id: true,
+              isActive: true,
+            },
+          },
           room: expect.any(Object),
           children: expect.objectContaining({
             where: { isActive: true },
@@ -108,6 +122,20 @@ describe('AnalyticsRepository', () => {
           name: true,
           age: true,
           roomId: true,
+          educatorId: true,
+          assistantId: true,
+          educator: {
+            select: {
+              id: true,
+              isActive: true,
+            },
+          },
+          assistant: {
+            select: {
+              id: true,
+              isActive: true,
+            },
+          },
           room: expect.any(Object),
           children: expect.objectContaining({
             where: { isActive: true },

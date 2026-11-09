@@ -16,6 +16,10 @@ const MOCK_GROUP = {
   name: 'Сонечко',
   age: 3,
   roomId: 6,
+  educatorId: 7,
+  assistantId: 11,
+  educator: { id: 7, isActive: true },
+  assistant: { id: 11, isActive: true },
   room: { id: 6, name: 'Кімната Сонечко', monthlyCost: 5000000 },
   children: [
     { id: 1, fullName: 'Марія', discountPercent: 0 },
@@ -42,6 +46,10 @@ describe('Analytics API (Supertest)', () => {
         name: 'Сонечко',
         age: 3,
         roomId: 6,
+        educatorId: 7,
+        assistantId: 11,
+        educator: { id: 7, isActive: true },
+        assistant: { id: 11, isActive: true },
         room: { id: 6, monthlyCost: 5000000 },
         children: MOCK_ACTIVE_CHILDREN,
         _count: { children: 2 },
@@ -162,6 +170,56 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.profit.uah).toBe(-28700);
     });
 
+    test('розрахунок профіту групи без помічника (assistantId: null) -> assistantSalary = 0', async () => {
+      analyticsRepository.findGroupById.mockResolvedValueOnce({
+        ...MOCK_GROUP,
+        assistantId: null,
+      });
+
+      const res = await request(app)
+        .get(`${BASE}/groups/2/profit`)
+        .set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.expenses.educatorSalary.uah).toBe(4000);
+      expect(res.body.expenses.assistantSalary.uah).toBe(0);
+      expect(res.body.expenses.assistantSalary.kopiykas).toBe(0);
+      expect(res.body.expenses.roomRent.uah).toBe(50000);
+      expect(res.body.expenses.total.uah).toBe(54000);
+      // Профіт: 41 940 - 54 000 = -12 060 грн
+      expect(res.body.profit.uah).toBe(-12060);
+    });
+
+    test('розрахунок профіту групи з неактивним вихователем -> educatorSalary = 0', async () => {
+      analyticsRepository.findGroupById.mockResolvedValueOnce({
+        ...MOCK_GROUP,
+        educator: { id: 7, isActive: false },
+      });
+
+      const res = await request(app)
+        .get(`${BASE}/groups/2/profit`)
+        .set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.expenses.educatorSalary.uah).toBe(0);
+      expect(res.body.expenses.assistantSalary.uah).toBe(20000);
+    });
+
+    test('розрахунок профіту групи з неактивним помічником -> assistantSalary = 0', async () => {
+      analyticsRepository.findGroupById.mockResolvedValueOnce({
+        ...MOCK_GROUP,
+        assistant: { id: 11, isActive: false },
+      });
+
+      const res = await request(app)
+        .get(`${BASE}/groups/2/profit`)
+        .set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.expenses.educatorSalary.uah).toBe(4000);
+      expect(res.body.expenses.assistantSalary.uah).toBe(0);
+    });
+
     test('групу не знайдено -> 404 NOT_FOUND', async () => {
       analyticsRepository.findGroupById.mockResolvedValueOnce(null);
 
@@ -254,6 +312,68 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.profit.uah).toBe(-1258700);
     });
 
+    test('загальний профіт садка коли група без помічника -> assistantSalary = 0 у загальних витратах', async () => {
+      analyticsRepository.findAllGroupsWithActiveChildren.mockResolvedValueOnce([
+        {
+          id: 2,
+          name: 'Сонечко',
+          age: 3,
+          roomId: 6,
+          educatorId: 7,
+          assistantId: null,
+          room: { id: 6, monthlyCost: 5000000 },
+          children: MOCK_ACTIVE_CHILDREN,
+          _count: { children: 2 },
+        },
+      ]);
+      analyticsRepository.countActiveStaffByType.mockResolvedValueOnce({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 1,
+        ASSISTANT: 0,
+      });
+
+      const res = await request(app).get(`${BASE}/profit`).set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.expenses.assistantsSalary.uah).toBe(0);
+      expect(res.body.expenses.assistantsSalary.kopiykas).toBe(0);
+      expect(res.body.assistantsCount).toBe(0);
+    });
+
+    test('загальний профіт садка коли в групі неактивні вихователь і помічник -> зарплати = 0', async () => {
+      analyticsRepository.findAllGroupsWithActiveChildren.mockResolvedValueOnce([
+        {
+          id: 2,
+          name: 'Сонечко',
+          age: 3,
+          roomId: 6,
+          educatorId: 7,
+          educator: { id: 7, isActive: false },
+          assistantId: 11,
+          assistant: { id: 11, isActive: false },
+          room: { id: 6, monthlyCost: 5000000 },
+          children: MOCK_ACTIVE_CHILDREN,
+          _count: { children: 2 },
+        },
+      ]);
+      analyticsRepository.countActiveStaffByType.mockResolvedValueOnce({
+        CLUB_TEACHER: 5,
+        MANAGER: 1,
+        EDUCATOR: 0,
+        ASSISTANT: 0,
+      });
+
+      const res = await request(app).get(`${BASE}/profit`).set('Authorization', tokenFor('ADMIN'));
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.expenses.educatorsSalary.uah).toBe(0);
+      expect(res.body.expenses.assistantsSalary.uah).toBe(0);
+      expect(res.body.groups[0].expenses.uah).toBe(50000); // лише оренда кімнати
+      expect(res.body.educatorsCount).toBe(0);
+      expect(res.body.assistantsCount).toBe(0);
+    });
+
     test('невалідний attendanceRate в query для загального профіту -> 400 VALIDATION_ERROR', async () => {
       const res = await request(app)
         .get(`${BASE}/profit?attendanceRate=-0.5`)
@@ -271,9 +391,7 @@ describe('Analytics API (Supertest)', () => {
         ASSISTANT: 3, // 1 група -> 2 вільних помічники по 20 000 грн = +40 000 грн
       });
 
-      const res = await request(app)
-        .get(`${BASE}/profit`)
-        .set('Authorization', tokenFor('ADMIN'));
+      const res = await request(app).get(`${BASE}/profit`).set('Authorization', tokenFor('ADMIN'));
 
       expect(res.status).toBe(StatusCodes.OK);
       expect(res.body.assistantsCount).toBe(3);

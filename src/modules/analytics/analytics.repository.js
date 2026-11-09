@@ -17,6 +17,20 @@ class AnalyticsRepository {
         name: true,
         age: true,
         roomId: true,
+        educatorId: true,
+        assistantId: true,
+        educator: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
+        assistant: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
         room: {
           select: {
             id: true,
@@ -65,6 +79,20 @@ class AnalyticsRepository {
         name: true,
         age: true,
         roomId: true,
+        educatorId: true,
+        assistantId: true,
+        educator: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
+        assistant: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
         room: {
           select: {
             id: true,
