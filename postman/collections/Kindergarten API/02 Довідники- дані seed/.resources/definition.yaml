@@ -1,0 +1,4 @@
+$kind: collection
+name: "02 Довідники: дані seed"
+description: Читає дані seed і зберігає id (групи, дітей, батьків) для наступних папок.
+order: 3000

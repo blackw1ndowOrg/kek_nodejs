@@ -68,10 +68,24 @@ model Child {
   createdAt          DateTime    @default(now())
   updatedAt          DateTime    @updatedAt
 
-  group   Group?        @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  parents ParentChild[]
+  group    Group?        @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  parents  ParentChild[]
+  absences Absence[]
 
   @@index([groupId])
+}
+
+/// Відсутність дитини. Харчування за день не нараховується, якщо батьки повідомили до 08:30 (Київ)
+model Absence {
+  id         Int      @id @default(autoincrement())
+  childId    Int
+  date       DateTime @db.Date
+  /// Коли батьки повідомили; ставить сервер, клієнт не передає
+  notifiedAt DateTime
+
+  child Child @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@unique([childId, date])
 }
 
 model ParentChild {

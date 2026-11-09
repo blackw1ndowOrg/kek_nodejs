@@ -1,5 +1,5 @@
 const { NotFoundError, BadRequestError } = require('../../errors/AppError');
-const { tuitionMonthly, mealMonthly } = require('../../domain/pricing');
+const { mealMonthly, calculateChildMonthlyTuition } = require('../../domain/pricing');
 const {
   educatorSalary,
   assistantSalary,
@@ -16,6 +16,18 @@ const DEFAULT_MANAGERS_COUNT = 1;
 const DEFAULT_TOTAL_ROOMS_COUNT = 20;
 const DEFAULT_CLUB_ROOMS_COUNT = 5;
 const DEFAULT_WORKING_DAYS = 21;
+
+function isStaffActive(staffRelation, staffId) {
+  if (staffId === null || staffRelation === null) {
+    return false;
+  }
+  if (staffRelation !== undefined && staffRelation !== null) {
+    if (staffRelation.isActive !== undefined) {
+      return Boolean(staffRelation.isActive);
+    }
+  }
+  return staffId !== null && staffId !== undefined;
+}
 
 class AnalyticsService {
   constructor(repository = analyticsRepository, settings = settingsService) {
@@ -46,6 +58,7 @@ class AnalyticsService {
     const attendanceRate = query.attendanceRate !== undefined ? Number(query.attendanceRate) : 0.8;
     const tuition = this.settings.get('TUITION_MONTHLY');
     const discountLevels = this.settings.get('DISCOUNT_LEVELS');
+    const yearlyDiscountPercent = this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12;
     const educatorRate = this.settings.get('EDUCATOR_PER_CHILD');
     const educatorExtra = this.settings.get('EDUCATOR_EXTRA_PAY');
     const assistantBase = this.settings.get('ASSISTANT_SALARY');
@@ -56,20 +69,32 @@ class AnalyticsService {
     const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
     const workingDays = DEFAULT_WORKING_DAYS;
 
-    const activeChildren = group.children;
-    const childrenCount = activeChildren.length;
+    const activeChildren = group.children || [];
+    const childrenCount = group._count?.children ?? activeChildren.length;
 
     let tuitionIncome = 0;
     for (const child of activeChildren) {
-      tuitionIncome += tuitionMonthly(child.discountPercent, tuition, discountLevels);
+      tuitionIncome += calculateChildMonthlyTuition(
+        child,
+        tuition,
+        discountLevels,
+        yearlyDiscountPercent
+      );
     }
     const fullMonthMeal = group.age ? mealMonthly(group.age, workingDays, mealBase, mealExtra) : 0;
     const mealPerChild = Math.round(fullMonthMeal * attendanceRate);
     const mealIncome = childrenCount * mealPerChild;
     const totalIncome = tuitionIncome + mealIncome;
 
-    const educator = educatorSalary(childrenCount, educatorRate, educatorExtra, threshold);
-    const assistant = assistantSalary(childrenCount, assistantBase, assistantExtra, threshold);
+    const hasEducator = isStaffActive(group.educator, group.educatorId);
+    const hasAssistant = isStaffActive(group.assistant, group.assistantId);
+
+    const educator = hasEducator
+      ? educatorSalary(childrenCount, educatorRate, educatorExtra, threshold)
+      : 0;
+    const assistant = hasAssistant
+      ? assistantSalary(childrenCount, assistantBase, assistantExtra, threshold)
+      : 0;
     const roomCost = group.room ? group.room.monthlyCost : defaultRoomCost;
 
     const totalExpenses = educator + assistant + roomCost;
@@ -126,6 +151,7 @@ class AnalyticsService {
     const attendanceRate = query.attendanceRate !== undefined ? Number(query.attendanceRate) : 0.8;
     const tuition = this.settings.get('TUITION_MONTHLY');
     const discountLevels = this.settings.get('DISCOUNT_LEVELS');
+    const yearlyDiscountPercent = this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12;
     const educatorRate = this.settings.get('EDUCATOR_PER_CHILD');
     const educatorExtra = this.settings.get('EDUCATOR_EXTRA_PAY');
     const assistantBase = this.settings.get('ASSISTANT_SALARY');
@@ -148,13 +174,25 @@ class AnalyticsService {
     let totalMealIncome = 0;
     let totalOccupiedGroupRoomsRent = 0;
     let totalAssignedChildrenCount = 0;
+    let assignedActiveEducatorsCount = 0;
+    let assignedActiveAssistantsCount = 0;
 
     const groupsBreakdown = groups.map((g) => {
-      const activeGroupChildren = g.children;
-      const count = activeGroupChildren.length;
+      const activeGroupChildren = g.children || [];
+      const count = g._count?.children ?? activeGroupChildren.length;
       totalAssignedChildrenCount += count;
-      const educator = educatorSalary(count, educatorRate, educatorExtra, threshold);
-      const assistant = assistantSalary(count, assistantBase, assistantExtra, threshold);
+      const hasEducator = isStaffActive(g.educator, g.educatorId);
+      const hasAssistant = isStaffActive(g.assistant, g.assistantId);
+
+      if (hasEducator) assignedActiveEducatorsCount++;
+      if (hasAssistant) assignedActiveAssistantsCount++;
+
+      const educator = hasEducator
+        ? educatorSalary(count, educatorRate, educatorExtra, threshold)
+        : 0;
+      const assistant = hasAssistant
+        ? assistantSalary(count, assistantBase, assistantExtra, threshold)
+        : 0;
       const roomCost = g.room ? g.room.monthlyCost : defaultRoomCost;
 
       totalEducatorsSalary += educator;
@@ -163,7 +201,12 @@ class AnalyticsService {
 
       let gTuition = 0;
       for (const child of activeGroupChildren) {
-        gTuition += tuitionMonthly(child.discountPercent, tuition, discountLevels);
+        gTuition += calculateChildMonthlyTuition(
+          child,
+          tuition,
+          discountLevels,
+          yearlyDiscountPercent
+        );
       }
       const fullMonthMeal = g.age ? mealMonthly(g.age, workingDays, mealBase, mealExtra) : 0;
       const gMealPerChild = Math.round(fullMonthMeal * attendanceRate);
@@ -193,19 +236,26 @@ class AnalyticsService {
 
     let clubTeachersCount = DEFAULT_CLUB_TEACHERS_COUNT;
     let managersCount = DEFAULT_MANAGERS_COUNT;
-    let educatorsCount = groups.length;
-    let assistantsCount = groups.length;
+    let educatorsCount = assignedActiveEducatorsCount;
+    let assistantsCount = assignedActiveAssistantsCount;
 
     const staffCounts = await this.repository.countActiveStaffByType();
     if (staffCounts) {
       clubTeachersCount = staffCounts.CLUB_TEACHER ?? clubTeachersCount;
       managersCount = staffCounts.MANAGER ?? managersCount;
-      educatorsCount = staffCounts.EDUCATOR ?? educatorsCount;
-      assistantsCount = staffCounts.ASSISTANT ?? assistantsCount;
+      educatorsCount = Math.max(
+        assignedActiveEducatorsCount,
+        staffCounts.EDUCATOR ?? educatorsCount
+      );
+      assistantsCount = Math.max(
+        assignedActiveAssistantsCount,
+        staffCounts.ASSISTANT ?? assistantsCount
+      );
     }
 
-    if (assistantsCount > groups.length) {
-      totalAssistantsSalary += (assistantsCount - groups.length) * assistantBase;
+    const freeAssistantsCount = Math.max(0, assistantsCount - assignedActiveAssistantsCount);
+    if (freeAssistantsCount > 0) {
+      totalAssistantsSalary += freeAssistantsCount * assistantBase;
     }
 
     const totalClubTeachersSalary = clubTeachersCount * clubTeacherSalary(clubSalary);

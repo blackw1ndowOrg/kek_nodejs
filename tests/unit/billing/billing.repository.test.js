@@ -9,6 +9,7 @@ function createRepository({ updatedCount = 1 } = {}) {
       findUnique: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: updatedCount }),
     },
+    absence: { findMany: jest.fn().mockResolvedValue([]) },
   };
   return { db, repository: new BillingRepository(db) };
 }
@@ -69,6 +70,19 @@ describe('BillingRepository', () => {
     test('конкурентна зміна -> 0 оновлених рядків', async () => {
       const { repository } = createRepository({ updatedCount: 0 });
       await expect(repository.updatePaidUntil(5, null, newDate)).resolves.toBe(0);
+    });
+  });
+
+  test('findAbsences: відсутності дитини в межах місяця, лише дата й момент повідомлення', async () => {
+    const { db, repository } = createRepository();
+    const range = {
+      from: new Date('2026-10-01T00:00:00Z'),
+      to: new Date('2026-11-01T00:00:00Z'),
+    };
+    await expect(repository.findAbsences(5, range)).resolves.toEqual([]);
+    expect(db.absence.findMany).toHaveBeenCalledWith({
+      where: { childId: 5, date: { gte: range.from, lt: range.to } },
+      select: { date: true, notifiedAt: true },
     });
   });
 });

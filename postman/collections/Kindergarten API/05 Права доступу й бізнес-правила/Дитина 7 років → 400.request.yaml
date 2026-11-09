@@ -1,0 +1,31 @@
+$kind: http-request
+url: "{{baseUrl}}/children"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "fullName": "Завелика Дитина",
+      "birthDate": "{{oldBirthDate}}",
+      "parentIds": [{{debtorParentId}}]
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{managerToken}}"
+scripts:
+  - type: beforeRequest
+    code: |-
+      const now = new Date();
+      const academicYear = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+      pm.collectionVariables.set('oldBirthDate', `${academicYear - 7}-03-15`);
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 400', () => pm.response.to.have.status(400));
+      pm.test('BAD_REQUEST (бізнес-правило, не Zod)', () =>
+        pm.expect(pm.response.json().error.code).to.eql('BAD_REQUEST'));
+    language: text/javascript
+order: 11000

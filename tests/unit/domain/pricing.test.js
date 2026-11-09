@@ -1,4 +1,6 @@
 const {
+  applyPercentDiscount,
+  calculateChildMonthlyTuition,
   tuitionMonthly,
   mealPerDay,
   mealMonthly,
@@ -8,6 +10,50 @@ const {
   MAX_AGE,
 } = require('../../../src/domain/pricing');
 const { BadRequestError } = require('../../../src/errors/AppError');
+
+describe('applyPercentDiscount', () => {
+  test('коректно застосовує відсоткову знижку з округленням', () => {
+    expect(applyPercentDiscount(1000000, 10)).toBe(900000);
+    expect(applyPercentDiscount(1500000, 12)).toBe(1320000);
+    expect(applyPercentDiscount(1500000, 0)).toBe(1500000);
+  });
+});
+
+describe('calculateChildMonthlyTuition', () => {
+  test('план MONTHLY повертає стандартну місячну вартість зі знижкою дитини', () => {
+    expect(calculateChildMonthlyTuition(0, 'MONTHLY')).toBe(1500000);
+    expect(calculateChildMonthlyTuition(10, 'MONTHLY')).toBe(1350000);
+    expect(calculateChildMonthlyTuition(20, 'MONTHLY')).toBe(1200000);
+    expect(calculateChildMonthlyTuition(30, 'MONTHLY')).toBe(1050000);
+  });
+
+  test('план YEARLY застосовує додаткову річну знижку 12%', () => {
+    // 0% пільга: 1 500 000 * 0.88 = 1 320 000
+    expect(calculateChildMonthlyTuition(0, 'YEARLY')).toBe(1320000);
+    // 10% пільга: 1 350 000 * 0.88 = 1 188 000
+    expect(calculateChildMonthlyTuition(10, 'YEARLY')).toBe(1188000);
+    // 20% пільга: 1 200 000 * 0.88 = 1 056 000 (1/12 від річної вартості)
+    expect(calculateChildMonthlyTuition(20, 'YEARLY')).toBe(1056000);
+    // 30% пільга: 1 050 000 * 0.88 = 924 000
+    expect(calculateChildMonthlyTuition(30, 'YEARLY')).toBe(924000);
+  });
+
+  test('підтримує передачу об’єкта дитини { discountPercent, paymentPlan }', () => {
+    const childMonthly = { discountPercent: 20, paymentPlan: 'MONTHLY' };
+    const childYearly = { discountPercent: 20, paymentPlan: 'YEARLY' };
+
+    expect(calculateChildMonthlyTuition(childMonthly)).toBe(1200000);
+    expect(calculateChildMonthlyTuition(childYearly)).toBe(1056000);
+  });
+
+  test('підтримує кастомні налаштування тарифу та знижок', () => {
+    expect(calculateChildMonthlyTuition(0, 'YEARLY', 2000000, [10], 15)).toBe(1700000);
+    // Виклик зі скороченим синтаксисом (child, tuition, discountLevels, yearlyDiscount)
+    const childYearly = { discountPercent: 10, paymentPlan: 'YEARLY' };
+    // 2 000 000 * 0.90 (пільга) = 1 800 000; 1 800 000 * 0.85 (15% річна знижка) = 1 530 000
+    expect(calculateChildMonthlyTuition(childYearly, 2000000, [10, 20], 15)).toBe(1530000);
+  });
+});
 
 describe('tuitionMonthly (копійки)', () => {
   test.each([

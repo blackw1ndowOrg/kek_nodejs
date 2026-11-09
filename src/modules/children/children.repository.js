@@ -71,6 +71,14 @@ class ChildrenRepository {
       select: CHILD_SELECT,
     });
   }
+
+  /** Назва й вік групи: щоб звірити з ними вік дитини при зміні дати народження */
+  async findGroup(id) {
+    return this.db.group.findUnique({
+      where: { id },
+      select: { name: true, age: true },
+    });
+  }
 }
 
 const childrenRepository = new ChildrenRepository();

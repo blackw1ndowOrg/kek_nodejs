@@ -3,6 +3,13 @@ const { tuitionMonthly, monthlyTotal, yearlyTotal } = require('../../domain/pric
 const { settingsService } = require('../settings/settings.service');
 const { billingRepository } = require('./billing.repository');
 const { startOfUtcDay, addMonthsUtc, toIsoDate } = require('./billing.dates');
+const {
+  WORKING_DAYS_PER_MONTH,
+  isCounted,
+  localMonth,
+  mealDays,
+  monthRange,
+} = require('../../domain/absence');
 
 const CURRENCY = 'UAH'; // All amounts are stored in kopiykas
 const MONTHS_BY_PLAN = Object.freeze({ MONTHLY: 1, YEARLY: 12 });
@@ -24,7 +31,12 @@ class BillingService {
   }
 
   /** Prices come from the settings cache; meals are charged by the age of the child's group, not the child's own age */
-  calculate(child) {
+  /**
+   * @param {object} child
+   * @param {number} days днів харчування за місяць: 21 мінус зараховані відсутності.
+   *   Річна сума їх не враховує: відсутності наперед невідомі
+   */
+  calculate(child, days = WORKING_DAYS_PER_MONTH) {
     if (!child.group) {
       throw new BadRequestError(
         'Child is not assigned to a group: meal price depends on the group age'
@@ -45,7 +57,8 @@ class BillingService {
       tuition,
       levels,
       basePerDay,
-      perExtraYear
+      perExtraYear,
+      days
     );
     return {
       groupAge,
@@ -72,10 +85,22 @@ class BillingService {
     return plan === 'YEARLY' ? bill.yearly.total : bill.monthly.total;
   }
 
-  /** Calculates billing details and payment due date for a child */
-  async getChildBilling(user, childId, now = new Date()) {
+  /** Зараховані відсутності дитини за місяць 'YYYY-MM' (повідомлені до 08:30 дня відсутності) */
+  async countedAbsences(childId, month) {
+    const absences = await this.repository.findAbsences(childId, monthRange(month));
+    return absences.filter(isCounted).length;
+  }
+
+  /**
+   * Calculates billing details and payment due date for a child.
+   * Місячна сума — за місяць month (за замовчуванням поточний): харчування за 21 день мінус
+   * зараховані відсутності
+   */
+  async getChildBilling(user, childId, now = new Date(), month = localMonth(now)) {
     const child = await this.loadAccessibleChild(user, childId);
-    const bill = this.calculate(child);
+    const absentDays = await this.countedAbsences(child.id, month);
+    const days = mealDays(absentDays);
+    const bill = this.calculate(child, days);
     const today = startOfUtcDay(now);
 
     return {
@@ -85,7 +110,7 @@ class BillingService {
       discountPercent: child.discountPercent,
       paymentPlan: child.paymentPlan,
       currency: CURRENCY,
-      monthly: bill.monthly,
+      monthly: { ...bill.monthly, month, mealDays: days, absentDays },
       yearly: bill.yearly,
       amountDue: this.amountFor(child.paymentPlan, bill),
       paidUntil: toIsoDate(child.paidUntil),

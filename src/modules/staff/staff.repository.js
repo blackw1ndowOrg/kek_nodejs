@@ -71,9 +71,46 @@ class StaffRepository {
             id: true,
             name: true,
             age: true,
-            children: {
+          },
+        },
+        assistantOf: {
+          select: {
+            id: true,
+            name: true,
+            age: true,
+          },
+        },
+        clubTaught: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+  }
+
+  async findWithActiveChildrenCount(id) {
+    return this.db.staff.findUnique({
+      where: { id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+          },
+        },
+        educatorOf: {
+          select: {
+            id: true,
+            name: true,
+            age: true,
+            _count: {
               select: {
-                id: true,
+                children: {
+                  where: { isActive: true },
+                },
               },
             },
           },
@@ -83,9 +120,11 @@ class StaffRepository {
             id: true,
             name: true,
             age: true,
-            children: {
+            _count: {
               select: {
-                id: true,
+                children: {
+                  where: { isActive: true },
+                },
               },
             },
           },

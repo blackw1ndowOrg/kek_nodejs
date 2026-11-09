@@ -85,7 +85,47 @@ function yearlyTotal(
   return yearlyTuition + meals;
 }
 
+/**
+ * Розраховує місячну вартість навчання для конкретної дитини з урахуванням
+ * її персональної пільги (discountPercent) та плану оплати (MONTHLY / YEARLY).
+ * При річній оплаті (YEARLY) додатково мультиплікативно застосовується
+ * знижка yearlyDiscountPercent (за замовчуванням 12%).
+ */
+function calculateChildMonthlyTuition(
+  discountOrChild,
+  paymentPlan = 'MONTHLY',
+  tuition = 1500000,
+  discountLevels = [10, 20, 30],
+  yearlyDiscountPercent = 12
+) {
+  let discountPercent = discountOrChild;
+  let plan = paymentPlan;
+  let actualTuition = tuition;
+  let actualDiscountLevels = discountLevels;
+  let actualYearlyDiscountPercent = yearlyDiscountPercent;
+
+  if (typeof discountOrChild === 'object' && discountOrChild !== null) {
+    discountPercent = discountOrChild.discountPercent ?? 0;
+    plan = discountOrChild.paymentPlan ?? 'MONTHLY';
+
+    if (typeof paymentPlan === 'number') {
+      actualTuition = paymentPlan;
+      actualDiscountLevels = Array.isArray(tuition) ? tuition : [10, 20, 30];
+      actualYearlyDiscountPercent =
+        typeof discountLevels === 'number' ? discountLevels : 12;
+    }
+  }
+
+  const baseMonthly = tuitionMonthly(discountPercent, actualTuition, actualDiscountLevels);
+  if (plan === 'YEARLY') {
+    return applyPercentDiscount(baseMonthly, actualYearlyDiscountPercent);
+  }
+  return baseMonthly;
+}
+
 module.exports = {
+  applyPercentDiscount,
+  calculateChildMonthlyTuition,
   tuitionMonthly,
   mealPerDay,
   mealMonthly,

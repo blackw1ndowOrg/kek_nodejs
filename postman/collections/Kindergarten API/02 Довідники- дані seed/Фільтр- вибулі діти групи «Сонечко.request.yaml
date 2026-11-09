@@ -1,0 +1,22 @@
+$kind: http-request
+name: "Фільтр: вибулі діти групи «Сонечко»"
+url: "{{baseUrl}}/children?groupId={{groupSonechkoId}}&isActive=false"
+method: GET
+queryParams:
+  groupId: "{{groupSonechkoId}}"
+  isActive: "false"
+auth:
+  type: bearer
+  credentials:
+    token: "{{managerToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const children = pm.response.json().children;
+      pm.test('Є вибулі, і всі неактивні', () => {
+        pm.expect(children.length).to.be.above(0);
+        children.forEach((c) => pm.expect(c.isActive).to.eql(false));
+      });
+    language: text/javascript
+order: 11000

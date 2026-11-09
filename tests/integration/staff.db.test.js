@@ -133,6 +133,19 @@ describe('Staff Database Integration Tests (Real PostgreSQL)', () => {
       expect(found).toHaveProperty('clubTaught');
     });
 
+    runIfDb(
+      'findWithActiveChildrenCount: завантажує співробітника з агрегатом _count для активних дітей у PostgreSQL',
+      async () => {
+        // Вихователь ID 7 закріплений за групою 'Сонечко' (5 активних дітей, 1 неактивна)
+        const staff = await staffRepository.findWithActiveChildrenCount(7);
+        expect(staff).toBeDefined();
+        expect(staff.id).toBe(7);
+        expect(staff.educatorOf).toBeDefined();
+        expect(staff.educatorOf.name).toBe('Сонечко');
+        expect(staff.educatorOf._count.children).toBe(5);
+      }
+    );
+
     runIfDb('update: оновлює дані співробітника у PostgreSQL', async () => {
       const staff = await staffRepository.create({
         fullName: "Старе Ім'я",
@@ -269,6 +282,41 @@ describe('Staff Database Integration Tests (Real PostgreSQL)', () => {
         expect(salaryInfo.details.childrenCount).toBe(14);
         expect(salaryInfo.details.groupName).toBe('Дзвіночок');
         expect(salaryInfo.salary).toBe(3400000);
+      }
+    );
+
+    runIfDb(
+      'getStaffSalary: розраховує зарплату вихователя «Сонечко» лише для активних дітей (5 з 6)',
+      async () => {
+        // Вихователь ID 7 закріплений за групою "Сонечко", де 6 дітей, але тільки 5 активних (1 неактивна)
+        // Розрахунок: 5 * 200_000 = 1_000_000 копійок (10 000 грн)
+        const salaryInfo = await staffService.getStaffSalary(7);
+
+        expect(salaryInfo.staffId).toBe(7);
+        expect(salaryInfo.type).toBe('EDUCATOR');
+        expect(salaryInfo.details.childrenCount).toBe(5);
+        expect(salaryInfo.details.groupName).toBe('Сонечко');
+        expect(salaryInfo.salary).toBe(1000000);
+      }
+    );
+
+    runIfDb(
+      'getStaffSalary: розраховує зарплату помічника «Дзвіночок» з урахуванням доплати понад 12 (14 дітей)',
+      async () => {
+        const assistant = await prisma.staff.findFirst({
+          where: { fullName: 'Тетяна Бондар' },
+        });
+        if (!assistant) return;
+
+        // Помічник у групі "Дзвіночок" (14 активних дітей > 12)
+        // Розрахунок: 20 000 грн базова + 2 * 3 000 грн = 26 000 грн (2 600 000 копійок)
+        const salaryInfo = await staffService.getStaffSalary(assistant.id);
+
+        expect(salaryInfo.staffId).toBe(assistant.id);
+        expect(salaryInfo.type).toBe('ASSISTANT');
+        expect(salaryInfo.details.childrenCount).toBe(14);
+        expect(salaryInfo.details.groupName).toBe('Дзвіночок');
+        expect(salaryInfo.salary).toBe(2600000);
       }
     );
   });

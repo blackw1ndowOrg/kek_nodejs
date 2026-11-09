@@ -1,0 +1,38 @@
+$kind: http-request
+name: 5. Реєстрація дитини 3 років (менеджер)
+url: "{{baseUrl}}/children"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "fullName": "Тестова Дитина",
+      "birthDate": "{{demoBirthDate}}",
+      "parentIds": [{{demoParentId}}],
+      "notes": null
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{managerToken}}"
+scripts:
+  - type: beforeRequest
+    code: |-
+      const now = new Date();
+      const academicYear = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+
+      pm.collectionVariables.set('demoBirthDate', `${academicYear - 3}-03-15`);
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 201', () => pm.response.to.have.status(201));
+      const child = pm.response.json();
+      pm.test('Без групи й без знижки', () => {
+        pm.expect(child.groupId).to.eql(null);
+        pm.expect(child.discountPercent).to.eql(0);
+      });
+      pm.collectionVariables.set('demoChildId', child.id);
+    language: text/javascript
+order: 5000

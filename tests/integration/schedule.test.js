@@ -34,6 +34,15 @@ const NAP = {
   activity: 'SLEEP',
   clubId: null,
 };
+const FREE_PLAY_SLOT = {
+  id: 102,
+  groupId: 2,
+  dayOfWeek: 1,
+  startMinute: 600,
+  endMinute: 645,
+  activity: 'FREE_PLAY',
+  clubId: null,
+};
 const ids = (n, from = 1) => Array.from({ length: n }, (_, i) => ({ id: from + i }));
 
 describe('Schedule API (Supertest)', () => {
@@ -103,6 +112,18 @@ describe('Schedule API (Supertest)', () => {
         .set('Authorization', tokenFor('ADMIN'));
       expect(res.status).toBe(StatusCodes.CREATED);
       expect(res.body).toEqual({ groups: 15, clubs: 5, slots: 1050 });
+      const [slots] = scheduleRepository.replaceAll.mock.calls[0];
+      expect(validateSchedule(slots)).toEqual([]);
+    });
+
+    test('POST /schedule/generate після видалення одного з 5 гуртків (лишилось 4): 201 і валідний розклад', async () => {
+      scheduleRepository.findGroups.mockResolvedValueOnce(ids(4));
+      scheduleRepository.findClubs.mockResolvedValueOnce(ids(4, 11)); // 4 гуртки замість 5
+      const res = await request(app)
+        .post(`${BASE}/generate`)
+        .set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.CREATED);
+      expect(res.body).toEqual({ groups: 4, clubs: 4, slots: 280 });
       const [slots] = scheduleRepository.replaceAll.mock.calls[0];
       expect(validateSchedule(slots)).toEqual([]);
     });
@@ -239,6 +260,60 @@ describe('Schedule API (Supertest)', () => {
       });
     });
 
+    test('після видалення гуртка адмін ставить заняття замість FREE_PLAY -> 200, у групи знову 3 заняття на день', async () => {
+      scheduleRepository.findSlot.mockResolvedValueOnce(FREE_PLAY_SLOT);
+      scheduleRepository.findClub.mockResolvedValueOnce({ id: 12 });
+      // У групи вже є 2 заняття на день (id: 100 і id: 104)
+      const lesson2 = { ...LESSON, id: 104, clubId: 13, startMinute: 840, endMinute: 885 };
+      scheduleRepository.findRelatedSlots.mockResolvedValueOnce([LESSON, lesson2, FREE_PLAY_SLOT]);
+
+      const res = await patch({ activity: 'CLUB', clubId: 12 }, 102);
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(scheduleRepository.updateSlot).toHaveBeenCalledWith(102, {
+        activity: 'CLUB',
+        clubId: 12,
+      });
+    });
+
+    test('зняття заняття CLUB -> FREE_PLAY: 200, clubId скидається в null', async () => {
+      scheduleRepository.findSlot.mockResolvedValueOnce(LESSON);
+      scheduleRepository.findRelatedSlots.mockResolvedValueOnce([LESSON, NAP]);
+
+      const res = await patch({ activity: 'FREE_PLAY' }, 100);
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(scheduleRepository.updateSlot).toHaveBeenCalledWith(100, {
+        activity: 'FREE_PLAY',
+        clubId: null,
+      });
+    });
+
+    test('четверте заняття за день -> 409', async () => {
+      scheduleRepository.findSlot.mockResolvedValueOnce(FREE_PLAY_SLOT);
+      scheduleRepository.findClub.mockResolvedValueOnce({ id: 14 });
+      const lesson2 = { ...LESSON, id: 104, clubId: 12, startMinute: 645, endMinute: 690 };
+      const lesson3 = { ...LESSON, id: 105, clubId: 13, startMinute: 840, endMinute: 885 };
+      scheduleRepository.findRelatedSlots.mockResolvedValueOnce([
+        LESSON,
+        lesson2,
+        lesson3,
+        FREE_PLAY_SLOT,
+      ]);
+
+      const res = await patch({ activity: 'CLUB', clubId: 14 }, 102);
+      expect(res.status).toBe(StatusCodes.CONFLICT);
+      expect(res.body.error.message).toContain('MAX_LESSONS_PER_DAY');
+      expect(scheduleRepository.updateSlot).not.toHaveBeenCalled();
+    });
+
+    test('заняття на сон/їжу -> 400', async () => {
+      scheduleRepository.findSlot.mockResolvedValueOnce(NAP);
+
+      const res = await patch({ activity: 'CLUB', clubId: 12 }, 101);
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.BAD_REQUEST);
+      expect(scheduleRepository.updateSlot).not.toHaveBeenCalled();
+    });
+
     test('слота немає -> 404', async () => {
       scheduleRepository.findSlot.mockResolvedValueOnce(null);
       expect((await patch({ startMinute: 600, endMinute: 645 }, 999)).status).toBe(
@@ -255,7 +330,9 @@ describe('Schedule API (Supertest)', () => {
 
     test.each([
       ['порожнє тіло', {}],
-      ['невідоме поле', { activity: 'CLUB' }],
+      ['невідоме поле', { unknownField: 123 }],
+      ['activity CLUB без clubId', { activity: 'CLUB' }],
+      ['недозволена активність SLEEP', { activity: 'SLEEP' }],
       ['день 6', { dayOfWeek: 6 }],
       ['початок не раніше за кінець', { startMinute: 700, endMinute: 600 }],
     ])('%s -> 400', async (_name, body) => {

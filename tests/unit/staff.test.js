@@ -114,6 +114,7 @@ describe('Staff Module - Unit Tests', () => {
         create: jest.fn(),
         findAll: jest.fn(),
         findById: jest.fn(),
+        findWithActiveChildrenCount: jest.fn((id) => mockRepo.findById(id)),
         update: jest.fn(),
         delete: jest.fn(),
       };
@@ -424,6 +425,86 @@ describe('Staff Module - Unit Tests', () => {
         expect(salaryInfo.details.groupName).toBe('Сонечко');
       });
 
+      test('вираховує зарплату вихователя лише за активними дітьми (5 активних дітей -> 10 000 грн)', async () => {
+        // Симуляція результату з репозиторію, де вже відфільтровано неактивні діти
+        mockRepo.findById.mockResolvedValueOnce({
+          id: 7,
+          fullName: 'Олена Коваленко',
+          type: 'EDUCATOR',
+          isActive: true,
+          educatorOf: {
+            name: 'Сонечко',
+            children: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }], // 5 активних (1 неактивна відфільтрована)
+          },
+        });
+
+        const salaryInfo = await service.getStaffSalary(7);
+
+        // 5 активних дітей: 5 * 200_000 = 1_000_000 копійок (10 000 грн)
+        expect(salaryInfo.salary).toBe(1000000);
+        expect(salaryInfo.details.childrenCount).toBe(5);
+        expect(salaryInfo.details.groupName).toBe('Сонечко');
+      });
+
+      test('вираховує зарплату через findWithActiveChildrenCount з використанням _count', async () => {
+        mockRepo.findWithActiveChildrenCount.mockResolvedValueOnce({
+          id: 7,
+          fullName: 'Олена Коваленко',
+          type: 'EDUCATOR',
+          isActive: true,
+          educatorOf: {
+            name: 'Сонечко',
+            _count: { children: 5 },
+          },
+        });
+
+        const salaryInfo = await service.getStaffSalary(7);
+
+        expect(mockRepo.findWithActiveChildrenCount).toHaveBeenCalledWith(7);
+        expect(salaryInfo.salary).toBe(1000000);
+        expect(salaryInfo.details.childrenCount).toBe(5);
+        expect(salaryInfo.details.groupName).toBe('Сонечко');
+      });
+
+      test('вираховує зарплату для ASSISTANT через findWithActiveChildrenCount з використанням _count (14 дітей)', async () => {
+        mockRepo.findWithActiveChildrenCount.mockResolvedValueOnce({
+          id: 2,
+          fullName: 'Помічник Оля',
+          type: 'ASSISTANT',
+          isActive: true,
+          assistantOf: {
+            name: 'Калинка',
+            _count: { children: 14 },
+          },
+        });
+
+        const salaryInfo = await service.getStaffSalary(2);
+
+        expect(mockRepo.findWithActiveChildrenCount).toHaveBeenCalledWith(2);
+        expect(salaryInfo.salary).toBe(2600000);
+        expect(salaryInfo.details.childrenCount).toBe(14);
+        expect(salaryInfo.details.groupName).toBe('Калинка');
+      });
+
+      test('успішно використовує fallback findById якщо findWithActiveChildrenCount відсутній', async () => {
+        delete mockRepo.findWithActiveChildrenCount;
+        mockRepo.findById.mockResolvedValueOnce({
+          id: 1,
+          fullName: 'Вихователь Фолбек',
+          type: 'EDUCATOR',
+          isActive: true,
+          educatorOf: {
+            name: 'Сонечко',
+            children: [{ id: 1 }, { id: 2 }],
+          },
+        });
+
+        const salaryInfo = await service.getStaffSalary(1);
+        expect(mockRepo.findById).toHaveBeenCalledWith(1);
+        expect(salaryInfo.salary).toBe(400000);
+        expect(salaryInfo.details.childrenCount).toBe(2);
+      });
+
       test('вираховує зарплату для EDUCATOR без закріпленої групи (0 дітей)', async () => {
         mockRepo.findById.mockResolvedValueOnce({
           id: 1,
@@ -527,7 +608,7 @@ describe('Staff Module - Unit Tests', () => {
         expect(salaryInfo.salary).toBe(9000000);
       });
 
-      test('повертає salary = 0 для неактивного співробітника', async () => {
+      test('повертає salary = 0 та details з null для неактивного співробітника', async () => {
         mockRepo.findById.mockResolvedValueOnce({
           id: 5,
           fullName: 'Звільнений',
@@ -538,6 +619,10 @@ describe('Staff Module - Unit Tests', () => {
         const salaryInfo = await service.getStaffSalary(5);
         expect(salaryInfo.salary).toBe(0);
         expect(salaryInfo.isActive).toBe(false);
+        expect(salaryInfo.details).toEqual({
+          childrenCount: null,
+          groupName: null,
+        });
       });
 
       test('викидає NotFoundError якщо співробітника не знайдено', async () => {

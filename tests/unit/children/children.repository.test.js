@@ -15,6 +15,7 @@ function createRepository() {
       update: jest.fn().mockResolvedValue({ id: 1 }),
     },
     parent: { count: jest.fn().mockResolvedValue(2) },
+    group: { findUnique: jest.fn().mockResolvedValue({ name: 'Сонечко', age: 4 }) },
   };
   return { db, repository: new ChildrenRepository(db) };
 }
@@ -91,6 +92,15 @@ describe('ChildrenRepository', () => {
       where: { id: 5 },
       data: { notes: null },
       select: CHILD_SELECT,
+    });
+  });
+
+  test('findGroup: лише назва й вік групи', async () => {
+    const { db, repository } = createRepository();
+    await expect(repository.findGroup(3)).resolves.toEqual({ name: 'Сонечко', age: 4 });
+    expect(db.group.findUnique).toHaveBeenCalledWith({
+      where: { id: 3 },
+      select: { name: true, age: true },
     });
   });
 });

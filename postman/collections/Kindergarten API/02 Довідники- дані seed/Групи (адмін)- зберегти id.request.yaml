@@ -1,0 +1,27 @@
+$kind: http-request
+name: "Групи (адмін): зберегти id"
+url: "{{baseUrl}}/groups"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const groups = pm.response.json().groups;
+      const sun = groups.find((g) => g.name === 'Сонечко');
+      const bell = groups.find((g) => g.name === 'Дзвіночок');
+      pm.test('Є групи «Сонечко» (2 роки) і «Дзвіночок» (3 роки)', () => {
+        pm.expect(sun.age).to.eql(2);
+        pm.expect(bell.age).to.eql(3);
+      });
+      pm.test('childrenCount рахує лише активних (у «Сонечку» 6 дітей, 1 вибув)', () =>
+        pm.expect(sun.childrenCount).to.eql(5));
+      pm.collectionVariables.set('groupSonechkoId', sun.id);
+      pm.collectionVariables.set('groupSonechkoRoomId', sun.roomId);
+      pm.collectionVariables.set('groupSonechkoEducatorId', sun.educatorId);
+      pm.collectionVariables.set('groupDzvinochokId', bell.id);
+    language: text/javascript
+order: 4000

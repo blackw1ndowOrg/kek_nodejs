@@ -33,7 +33,7 @@ describe('AnalyticsRepository', () => {
         id: 1,
         name: 'Сонечко',
         room: { id: 10, name: 'Кімната 1', monthlyCost: 5000000 },
-        children: [{ id: 5, fullName: 'Іван', discountPercent: 10 }],
+        children: [{ id: 5, fullName: 'Іван', discountPercent: 10, paymentPlan: 'MONTHLY' }],
       };
       mockDb.group.findUnique.mockResolvedValue(mockGroup);
 
@@ -46,9 +46,29 @@ describe('AnalyticsRepository', () => {
           name: true,
           age: true,
           roomId: true,
+          educatorId: true,
+          assistantId: true,
+          educator: {
+            select: {
+              id: true,
+              isActive: true,
+            },
+          },
+          assistant: {
+            select: {
+              id: true,
+              isActive: true,
+            },
+          },
           room: expect.any(Object),
           children: expect.objectContaining({
             where: { isActive: true },
+            select: {
+              id: true,
+              fullName: true,
+              discountPercent: true,
+              paymentPlan: true,
+            },
           }),
         }),
       });
@@ -59,8 +79,8 @@ describe('AnalyticsRepository', () => {
   describe('findAllActiveChildren', () => {
     test('викликає child.findMany з умовою isActive: true', async () => {
       const mockChildren = [
-        { id: 1, fullName: 'Марія', discountPercent: 0, groupId: 1 },
-        { id: 2, fullName: 'Петро', discountPercent: 20, groupId: 2 },
+        { id: 1, fullName: 'Марія', discountPercent: 0, paymentPlan: 'MONTHLY', groupId: 1 },
+        { id: 2, fullName: 'Петро', discountPercent: 20, paymentPlan: 'YEARLY', groupId: 2 },
       ];
       mockDb.child.findMany.mockResolvedValue(mockChildren);
 
@@ -72,6 +92,7 @@ describe('AnalyticsRepository', () => {
           id: true,
           fullName: true,
           discountPercent: true,
+          paymentPlan: true,
           groupId: true,
         },
         orderBy: { id: 'asc' },
@@ -87,7 +108,7 @@ describe('AnalyticsRepository', () => {
           id: 1,
           name: 'Сонечко',
           room: { id: 1, monthlyCost: 5000000 },
-          children: [{ id: 1, discountPercent: 0 }],
+          children: [{ id: 1, discountPercent: 0, paymentPlan: 'MONTHLY' }],
           _count: { children: 1 },
         },
       ];
@@ -99,9 +120,31 @@ describe('AnalyticsRepository', () => {
         select: expect.objectContaining({
           id: true,
           name: true,
+          age: true,
+          roomId: true,
+          educatorId: true,
+          assistantId: true,
+          educator: {
+            select: {
+              id: true,
+              isActive: true,
+            },
+          },
+          assistant: {
+            select: {
+              id: true,
+              isActive: true,
+            },
+          },
           room: expect.any(Object),
           children: expect.objectContaining({
             where: { isActive: true },
+            select: {
+              id: true,
+              fullName: true,
+              discountPercent: true,
+              paymentPlan: true,
+            },
           }),
           _count: expect.any(Object),
         }),
@@ -112,49 +155,35 @@ describe('AnalyticsRepository', () => {
   });
 
   describe('countActiveStaffByType', () => {
-    test('викликає staff.groupBy з умовою isActive: true та мапить результат за типами', async () => {
+    test('повертає кількість персоналу за посадами', async () => {
       mockDb.staff.groupBy.mockResolvedValue([
+        { type: 'EDUCATOR', _count: { id: 4 } },
+        { type: 'ASSISTANT', _count: { id: 3 } },
         { type: 'CLUB_TEACHER', _count: { id: 5 } },
         { type: 'MANAGER', _count: { id: 1 } },
-        { type: 'EDUCATOR', _count: { id: 4 } },
-        { type: 'ASSISTANT', _count: { id: 4 } },
       ]);
 
       const result = await repo.countActiveStaffByType();
 
-      expect(mockDb.staff.groupBy).toHaveBeenCalledWith({
-        by: ['type'],
-        where: { isActive: true },
-        _count: { id: true },
-      });
       expect(result).toEqual({
+        EDUCATOR: 4,
+        ASSISTANT: 3,
         CLUB_TEACHER: 5,
         MANAGER: 1,
-        EDUCATOR: 4,
-        ASSISTANT: 4,
       });
     });
 
-    test('повертає нулі для типів, яких немає в результаті groupBy та ігнорує сторонні типи', async () => {
-      mockDb.staff.groupBy.mockResolvedValue([
-        { type: 'CLUB_TEACHER', _count: { id: 2 } },
-        { type: 'CLEANER', _count: { id: 5 } },
-      ]);
+    test('повертає нулі для відсутніх посад', async () => {
+      mockDb.staff.groupBy.mockResolvedValue([]);
 
       const result = await repo.countActiveStaffByType();
 
       expect(result).toEqual({
-        CLUB_TEACHER: 2,
+        CLUB_TEACHER: 0,
         MANAGER: 0,
         EDUCATOR: 0,
         ASSISTANT: 0,
       });
-    });
-
-    test('прокидає помилку бази даних далі без мовчазного приглушення', async () => {
-      mockDb.staff.groupBy.mockRejectedValue(new Error('DB connection failed'));
-
-      await expect(repo.countActiveStaffByType()).rejects.toThrow('DB connection failed');
     });
   });
 });

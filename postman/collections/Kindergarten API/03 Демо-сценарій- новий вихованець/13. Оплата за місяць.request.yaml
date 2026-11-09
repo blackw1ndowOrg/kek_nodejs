@@ -1,0 +1,24 @@
+$kind: http-request
+url: "{{baseUrl}}/billing/children/{{demoChildId}}/payments"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "plan": "MONTHLY"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{demoParentToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 201', () => pm.response.to.have.status(201));
+      const payment = pm.response.json();
+      pm.test('Сума 20 400 грн', () => pm.expect(payment.amount).to.eql(2040000));
+      pm.test('Оплачено до дати', () => pm.expect(payment.paidUntil).to.match(/^\d{4}-\d{2}-\d{2}$/));
+    language: text/javascript
+order: 13000

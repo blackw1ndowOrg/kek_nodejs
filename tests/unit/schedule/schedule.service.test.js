@@ -11,7 +11,6 @@ const {
 } = require('../../../src/errors/AppError');
 const { validateSchedule } = require('../../../src/domain/schedule');
 
-const ADMIN = { id: 1, role: 'ADMIN' };
 const PARENT = { id: 9, role: 'PARENT' };
 const TEACHER = { id: 9, role: 'TEACHER' };
 
@@ -35,6 +34,26 @@ const NAP = {
   startMinute: 780,
   endMinute: 840,
   activity: 'SLEEP',
+  clubId: null,
+};
+// вільна гра в зоні занять 09:45–10:15
+const FREE_PLAY_SLOT = {
+  id: 102,
+  groupId: 1,
+  dayOfWeek: 1,
+  startMinute: 585,
+  endMinute: 615,
+  activity: 'FREE_PLAY',
+  clubId: null,
+};
+// вільна гра поза зоною занять (перед сном 12:30–13:00)
+const MIDDAY_PLAY_SLOT = {
+  id: 103,
+  groupId: 1,
+  dayOfWeek: 1,
+  startMinute: 750,
+  endMinute: 780,
+  activity: 'FREE_PLAY',
   clubId: null,
 };
 // інша група, гурток 12 о 09:00
@@ -245,6 +264,76 @@ describe('ScheduleService', () => {
       const data = { startMinute: 885, endMinute: 915 };
       await service.updateSlot(100, data);
       expect(repository.updateSlot).toHaveBeenCalledWith(100, data);
+    });
+
+    test('FREE_PLAY -> CLUB: успішно ставить заняття в зоні занять', async () => {
+      const { repository, service } = createService();
+      repository.findSlot.mockResolvedValueOnce(FREE_PLAY_SLOT);
+      repository.findClub.mockResolvedValueOnce({ id: 12 });
+      repository.findRelatedSlots.mockResolvedValueOnce([LESSON, NAP, FREE_PLAY_SLOT]);
+
+      await service.updateSlot(102, { activity: 'CLUB', clubId: 12 });
+
+      expect(repository.findClub).toHaveBeenCalledWith(12);
+      expect(repository.updateSlot).toHaveBeenCalledWith(102, { activity: 'CLUB', clubId: 12 });
+    });
+
+    test('CLUB -> FREE_PLAY: знімає заняття, clubId скидається в null', async () => {
+      const { repository, service } = createService();
+      repository.findSlot.mockResolvedValueOnce(LESSON);
+      repository.findRelatedSlots.mockResolvedValueOnce([LESSON, NAP]);
+
+      await service.updateSlot(100, { activity: 'FREE_PLAY' });
+
+      expect(repository.updateSlot).toHaveBeenCalledWith(100, {
+        activity: 'FREE_PLAY',
+        clubId: null,
+      });
+    });
+
+    test('4-те заняття за день для групи -> 409 MAX_LESSONS_PER_DAY', async () => {
+      const { repository, service } = createService();
+      const lesson2 = { ...LESSON, id: 104, clubId: 12, startMinute: 630, endMinute: 660 };
+      const lesson3 = { ...LESSON, id: 105, clubId: 13, startMinute: 840, endMinute: 870 };
+      const slot4 = { ...FREE_PLAY_SLOT, id: 106, startMinute: 885, endMinute: 915 };
+
+      repository.findSlot.mockResolvedValueOnce(slot4);
+      repository.findClub.mockResolvedValueOnce({ id: 14 });
+      repository.findRelatedSlots.mockResolvedValueOnce([LESSON, lesson2, lesson3, slot4]);
+
+      const promise = service.updateSlot(106, { activity: 'CLUB', clubId: 14 });
+      await expect(promise).rejects.toThrow(ConflictError);
+      await expect(promise).rejects.toThrow('MAX_LESSONS_PER_DAY');
+      expect(repository.updateSlot).not.toHaveBeenCalled();
+    });
+
+    test('заняття на сон або їжу -> 400', async () => {
+      const { repository, service } = createService();
+      repository.findSlot.mockResolvedValueOnce(NAP);
+
+      await expect(service.updateSlot(101, { activity: 'CLUB', clubId: 12 })).rejects.toThrow(
+        BadRequestError
+      );
+      expect(repository.findClub).not.toHaveBeenCalled();
+      expect(repository.updateSlot).not.toHaveBeenCalled();
+    });
+
+    test('заняття у слоті FREE_PLAY поза зонами занять -> 400', async () => {
+      const { repository, service } = createService();
+      repository.findSlot.mockResolvedValueOnce(MIDDAY_PLAY_SLOT);
+
+      await expect(service.updateSlot(103, { activity: 'CLUB', clubId: 12 })).rejects.toThrow(
+        BadRequestError
+      );
+      expect(repository.findClub).not.toHaveBeenCalled();
+      expect(repository.updateSlot).not.toHaveBeenCalled();
+    });
+
+    test('FREE_PLAY -> CLUB без clubId -> 400', async () => {
+      const { repository, service } = createService();
+      repository.findSlot.mockResolvedValueOnce(FREE_PLAY_SLOT);
+
+      await expect(service.updateSlot(102, { activity: 'CLUB' })).rejects.toThrow(BadRequestError);
     });
 
     test('чужі існуючі конфлікти не блокують правку', async () => {

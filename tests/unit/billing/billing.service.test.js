@@ -47,6 +47,7 @@ const CHILD = Object.freeze({
 function createService(child = CHILD, { updated = 1 } = {}) {
   const repository = {
     findChildWithParents: jest.fn().mockResolvedValue(child),
+    findAbsences: jest.fn().mockResolvedValue([]),
     updatePaidUntil: jest.fn().mockResolvedValue(updated),
   };
   const settings = { get: jest.fn((key) => SETTINGS[key]) };
@@ -129,7 +130,15 @@ describe('BillingService', () => {
       expect(settings.get).toHaveBeenCalledWith('MEAL_PER_EXTRA_YEAR');
       expect(settings.get).toHaveBeenCalledWith('YEARLY_DISCOUNT_PERCENT');
       expect(tuitionMonthly).toHaveBeenCalledWith(10, 300000, SETTINGS.DISCOUNT_LEVELS);
-      expect(monthlyTotal).toHaveBeenCalledWith(3, 10, 300000, SETTINGS.DISCOUNT_LEVELS, 5000, 500);
+      expect(monthlyTotal).toHaveBeenCalledWith(
+        3,
+        10,
+        300000,
+        SETTINGS.DISCOUNT_LEVELS,
+        5000,
+        500,
+        21
+      );
       expect(yearlyTotal).toHaveBeenCalledWith(
         3,
         10,
@@ -164,7 +173,14 @@ describe('BillingService', () => {
         discountPercent: 10,
         paymentPlan: 'MONTHLY',
         currency: 'UAH',
-        monthly: { tuition: TUITION, meals: MONTHLY_TOTAL - TUITION, total: MONTHLY_TOTAL },
+        monthly: {
+          tuition: TUITION,
+          meals: MONTHLY_TOTAL - TUITION,
+          total: MONTHLY_TOTAL,
+          month: '2026-10',
+          mealDays: 21,
+          absentDays: 0,
+        },
         yearly: { total: YEARLY_TOTAL },
         amountDue: MONTHLY_TOTAL,
         paidUntil: '2026-11-10',
@@ -204,6 +220,73 @@ describe('BillingService', () => {
     test('дитина без групи -> 400', async () => {
       const { service } = createService({ ...CHILD, group: null });
       await expect(service.getChildBilling(PARENT, 5, NOW)).rejects.toThrow(BadRequestError);
+    });
+
+    describe('відсутності', () => {
+      const absence = (date, notifiedAt) => ({
+        date: new Date(`${date}T00:00:00Z`),
+        notifiedAt: new Date(notifiedAt),
+      });
+
+      test('зараховані відсутності місяця зменшують дні харчування', async () => {
+        const { repository, service } = createService();
+        repository.findAbsences.mockResolvedValueOnce([
+          absence('2026-10-14', '2026-10-13T18:00:00Z'),
+          absence('2026-10-15', '2026-10-15T08:29:59+03:00'),
+        ]);
+        const result = await service.getChildBilling(PARENT, 5, NOW);
+        expect(repository.findAbsences).toHaveBeenCalledWith(5, {
+          from: new Date('2026-10-01T00:00:00Z'),
+          to: new Date('2026-11-01T00:00:00Z'),
+        });
+        expect(monthlyTotal).toHaveBeenLastCalledWith(
+          3,
+          10,
+          300000,
+          SETTINGS.DISCOUNT_LEVELS,
+          5000,
+          500,
+          19
+        );
+        expect(result.monthly).toMatchObject({ month: '2026-10', mealDays: 19, absentDays: 2 });
+      });
+
+      test('повідомили о 08:30 чи пізніше -> день не віднімається', async () => {
+        const { repository, service } = createService();
+        repository.findAbsences.mockResolvedValueOnce([
+          absence('2026-10-15', '2026-10-15T08:30:00+03:00'),
+        ]);
+        const result = await service.getChildBilling(PARENT, 5, NOW);
+        expect(result.monthly).toMatchObject({ mealDays: 21, absentDays: 0 });
+      });
+
+      test('конкретний місяць', async () => {
+        const { repository, service } = createService();
+        const result = await service.getChildBilling(ADMIN, 5, NOW, '2026-09');
+        expect(repository.findAbsences).toHaveBeenCalledWith(5, {
+          from: new Date('2026-09-01T00:00:00Z'),
+          to: new Date('2026-10-01T00:00:00Z'),
+        });
+        expect(result.monthly.month).toBe('2026-09');
+      });
+
+      test('річна сума відсутностей не враховує', async () => {
+        const { repository, service } = createService();
+        repository.findAbsences.mockResolvedValueOnce([
+          absence('2026-10-14', '2026-10-13T18:00:00Z'),
+        ]);
+        const result = await service.getChildBilling(PARENT, 5, NOW);
+        expect(result.yearly).toEqual({ total: YEARLY_TOTAL });
+        expect(yearlyTotal).toHaveBeenCalledWith(
+          3,
+          10,
+          300000,
+          SETTINGS.DISCOUNT_LEVELS,
+          10,
+          5000,
+          500
+        );
+      });
     });
   });
 

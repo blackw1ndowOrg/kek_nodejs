@@ -17,6 +17,20 @@ class AnalyticsRepository {
         name: true,
         age: true,
         roomId: true,
+        educatorId: true,
+        assistantId: true,
+        educator: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
+        assistant: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
         room: {
           select: {
             id: true,
@@ -30,6 +44,7 @@ class AnalyticsRepository {
             id: true,
             fullName: true,
             discountPercent: true,
+            paymentPlan: true,
           },
           orderBy: { id: 'asc' },
         },
@@ -47,6 +62,7 @@ class AnalyticsRepository {
         id: true,
         fullName: true,
         discountPercent: true,
+        paymentPlan: true,
         groupId: true,
       },
       orderBy: { id: 'asc' },
@@ -63,6 +79,20 @@ class AnalyticsRepository {
         name: true,
         age: true,
         roomId: true,
+        educatorId: true,
+        assistantId: true,
+        educator: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
+        assistant: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
         room: {
           select: {
             id: true,
@@ -76,6 +106,7 @@ class AnalyticsRepository {
             id: true,
             fullName: true,
             discountPercent: true,
+            paymentPlan: true,
           },
           orderBy: { id: 'asc' },
         },

@@ -7,7 +7,12 @@ class BillingController {
   }
 
   getChildBilling = async (req, res) => {
-    const result = await this.service.getChildBilling(req.user, req.params.childId);
+    const result = await this.service.getChildBilling(
+      req.user,
+      req.params.childId,
+      undefined,
+      req.query.month
+    );
     res.status(StatusCodes.OK).json(result);
   };
 

@@ -90,14 +90,43 @@ describe('StaffRepository - Unit Tests', () => {
   });
 
   describe('findById', () => {
-    test('повертає запис за id', async () => {
+    test('повертає запис за id без вибірки дітей (чистий загальний метод findById)', async () => {
       mockDb.staff.findUnique.mockResolvedValueOnce({ id: 3, fullName: 'Богдан' });
 
       const result = await repo.findById(3);
 
-      expect(mockDb.staff.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 3 } })
-      );
+      expect(mockDb.staff.findUnique).toHaveBeenCalledWith({
+        where: { id: 3 },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true,
+            },
+          },
+          educatorOf: {
+            select: {
+              id: true,
+              name: true,
+              age: true,
+            },
+          },
+          assistantOf: {
+            select: {
+              id: true,
+              name: true,
+              age: true,
+            },
+          },
+          clubTaught: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
       expect(result.fullName).toBe('Богдан');
     });
 
@@ -105,6 +134,46 @@ describe('StaffRepository - Unit Tests', () => {
       mockDb.staff.findUnique.mockResolvedValueOnce(null);
 
       const result = await repo.findById(999);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('findWithActiveChildrenCount', () => {
+    test('завантажує підрахунок активних дітей через _count з фільтром isActive: true', async () => {
+      mockDb.staff.findUnique.mockResolvedValueOnce({ id: 1, fullName: 'Олена' });
+
+      await repo.findWithActiveChildrenCount(1);
+
+      expect(mockDb.staff.findUnique).toHaveBeenCalledWith({
+        where: { id: 1 },
+        include: expect.objectContaining({
+          educatorOf: expect.objectContaining({
+            select: expect.objectContaining({
+              _count: {
+                select: {
+                  children: { where: { isActive: true } },
+                },
+              },
+            }),
+          }),
+          assistantOf: expect.objectContaining({
+            select: expect.objectContaining({
+              _count: {
+                select: {
+                  children: { where: { isActive: true } },
+                },
+              },
+            }),
+          }),
+        }),
+      });
+    });
+
+    test('повертає null якщо запис не знайдено', async () => {
+      mockDb.staff.findUnique.mockResolvedValueOnce(null);
+
+      const result = await repo.findWithActiveChildrenCount(999);
 
       expect(result).toBeNull();
     });

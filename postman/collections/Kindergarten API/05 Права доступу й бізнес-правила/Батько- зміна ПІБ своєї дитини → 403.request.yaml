@@ -1,0 +1,21 @@
+$kind: http-request
+name: "Батько: зміна ПІБ своєї дитини → 403"
+url: "{{baseUrl}}/children/{{ownChildId}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "fullName": "Інше Ім’я"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{parentToken}}"
+scripts:
+  - type: afterResponse
+    code: pm.test('Статус 403', () => pm.response.to.have.status(403));
+    language: text/javascript
+order: 4000

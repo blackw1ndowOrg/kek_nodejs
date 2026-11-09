@@ -27,10 +27,20 @@ describe('childParamsSchema', () => {
 });
 
 describe('getChildBillingSchema', () => {
-  test('валідні params', () => {
-    expect(getChildBillingSchema.parse({ params: { childId: '3' } })).toEqual({
+  test('валідні params, month необов’язковий', () => {
+    expect(getChildBillingSchema.parse({ params: { childId: '3' }, query: {} })).toEqual({
       params: { childId: 3 },
+      query: {},
     });
+    expect(
+      getChildBillingSchema.parse({ params: { childId: '3' }, query: { month: '2026-10' } }).query
+    ).toEqual({ month: '2026-10' });
+  });
+
+  test.each(['2026-13', '2026-1', 'жовтень'])('month %p -> помилка українською', (month) => {
+    const result = getChildBillingSchema.safeParse({ params: { childId: '3' }, query: { month } });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('month має бути у форматі YYYY-MM');
   });
 
   test('без params -> помилка', () => {

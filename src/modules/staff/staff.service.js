@@ -139,7 +139,9 @@ class StaffService {
   }
 
   async getStaffSalary(id) {
-    const staff = await this.repository.findById(id);
+    const staff = this.repository.findWithActiveChildrenCount
+      ? await this.repository.findWithActiveChildrenCount(id)
+      : await this.repository.findById(id);
     if (!staff) {
       throw new NotFoundError('Працівника з таким ID не знайдено');
     }
@@ -151,6 +153,10 @@ class StaffService {
         type: staff.type,
         salary: 0,
         isActive: false,
+        details: {
+          childrenCount: null,
+          groupName: null,
+        },
       };
     }
 
@@ -160,7 +166,8 @@ class StaffService {
 
     switch (staff.type) {
       case 'EDUCATOR': {
-        childrenCount = staff.educatorOf?.children?.length || 0;
+        childrenCount =
+          staff.educatorOf?._count?.children ?? staff.educatorOf?.children?.length ?? 0;
         groupName = staff.educatorOf?.name || null;
         const ratePerChild = this.settings.get('EDUCATOR_PER_CHILD');
         const extraPay = this.settings.get('EDUCATOR_EXTRA_PAY');
@@ -169,7 +176,8 @@ class StaffService {
         break;
       }
       case 'ASSISTANT': {
-        childrenCount = staff.assistantOf?.children?.length || 0;
+        childrenCount =
+          staff.assistantOf?._count?.children ?? staff.assistantOf?.children?.length ?? 0;
         groupName = staff.assistantOf?.name || null;
         const baseSalary = this.settings.get('ASSISTANT_SALARY');
         const extraPay = this.settings.get('ASSISTANT_EXTRA_PAY');
