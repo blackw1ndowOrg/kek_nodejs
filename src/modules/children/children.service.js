@@ -153,9 +153,6 @@ class ChildrenService {
         throw new ForbiddenError('Батьки можуть змінювати лише примітки (notes)');
       }
     }
-    if (data.birthDate !== undefined) {
-      this.assertAge(data.birthDate);
-    }
     this.assertAdminFields(user, data, existing);
 
     const payload = { ...data };
@@ -165,15 +162,17 @@ class ChildrenService {
 
     if (data.birthDate !== undefined) {
       this.assertAge(data.birthDate);
-      const staysInGroup = child.groupId !== null && payload.groupId !== null;
+      // група після оновлення: нова, якщо передана, інакше поточна
+      const targetGroupId = payload.groupId !== undefined ? payload.groupId : existing.groupId;
+      // нову групу (зміна groupId) перевіряє окрема логіка, тут лише коли дитина лишається в тій самій
+      const staysInGroup = existing.groupId !== null && targetGroupId === existing.groupId;
       if (staysInGroup) {
-        await this.assertGroupAge(child.groupId, data.birthDate);
+        await this.assertGroupAge(existing.groupId, data.birthDate);
       }
-    } else if (data.isActive === true && !child.isActive) {
+    } else if (data.isActive === true && !existing.isActive) {
       // Повернення вибулої дитини: за час відсутності вона могла перерости MAX_AGE
-      this.assertAge(child.birthDate);
+      this.assertAge(existing.birthDate);
     }
-    this.assertAdminFields(user, data);
 
     try {
       return this.toResponse(user, await this.repository.update(id, payload));
