@@ -10,10 +10,14 @@ const NO_DISCOUNT = 0; // без пільги можна завжди, у discou
 const MONTHS_PER_YEAR = 12;
 const PERCENT_BASE = 100;
 
-function assertDiscount(discountPercent, discountLevels) {
-  const allowed = [NO_DISCOUNT, ...discountLevels];
-  if (!allowed.includes(discountPercent)) {
-    throw new BadRequestError(`Discount must be one of ${allowed.join(', ')}: ${discountPercent}`);
+function assertDiscount(discountPercent) {
+  if (
+    typeof discountPercent !== 'number' ||
+    !Number.isInteger(discountPercent) ||
+    discountPercent < 0 ||
+    discountPercent > 100
+  ) {
+    throw new BadRequestError(`Discount must be an integer from 0 to 100: ${discountPercent}`);
   }
 }
 
@@ -32,9 +36,9 @@ function assertDays(days) {
 const applyPercentDiscount = (amount, percent) =>
   Math.round((amount * (PERCENT_BASE - percent)) / PERCENT_BASE);
 
-/** Навчання за місяць зі знижкою 0 або одним із discountLevels */
-function tuitionMonthly(discountPercent, tuition = 1500000, discountLevels = [10, 20, 30]) {
-  assertDiscount(discountPercent, discountLevels);
+/** Навчання за місяць зі збереженою знижкою дитини (0..100) */
+function tuitionMonthly(discountPercent, tuition = 1500000, _discountLevels) {
+  assertDiscount(discountPercent);
   return applyPercentDiscount(tuition, discountPercent);
 }
 
@@ -132,4 +136,5 @@ module.exports = {
   yearlyTotal,
   MIN_AGE,
   MAX_AGE,
+  NO_DISCOUNT,
 };

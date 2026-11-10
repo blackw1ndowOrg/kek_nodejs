@@ -207,6 +207,67 @@ describe('ChildrenService', () => {
       );
       await expect(service.update(ADMIN, 5, { discountPercent: 10 })).resolves.toBe(CHILD);
     });
+
+    test('оновлення без зміни знижки дозволене для дитини зі збереженою "старою" знижкою 30% при discountLevels [10, 20]', async () => {
+      const { repository, settings, service } = createService();
+      settings.get.mockReturnValue([10, 20]);
+      repository.findById.mockResolvedValueOnce({ ...CHILD, discountPercent: 30 });
+
+      // Зміна notes не перевіряє стару знижку
+      await expect(
+        service.update(MANAGER, 5, { notes: 'нова примітка' })
+      ).resolves.toBeDefined();
+
+      // Передача тієї самої знижки не викидає помилку
+      repository.findById.mockResolvedValueOnce({ ...CHILD, discountPercent: 30 });
+      await expect(
+        service.update(ADMIN, 5, { discountPercent: 30 })
+      ).resolves.toBeDefined();
+    });
+
+    test('зміна знижки на значення не зі списку discountLevels -> 400', async () => {
+      const { repository, settings, service } = createService();
+      settings.get.mockReturnValue([10, 20]);
+      repository.findById.mockResolvedValueOnce({ ...CHILD, discountPercent: 10 });
+
+      await expect(
+        service.update(ADMIN, 5, { discountPercent: 40 })
+      ).rejects.toThrow(BadRequestError);
+    });
+  });
+
+  describe('updateDiscount', () => {
+    test('адмін успішно оновлює знижку на дозволену зі списку', async () => {
+      const { repository, settings, service } = createService();
+      settings.get.mockReturnValue([10, 20]);
+      await expect(service.updateDiscount(ADMIN, 5, 10)).resolves.toEqual(CHILD);
+      expect(repository.update).toHaveBeenCalledWith(5, { discountPercent: 10 });
+    });
+
+    test('знижка 0 дозволена завжди', async () => {
+      const { repository, settings, service } = createService();
+      settings.get.mockReturnValue([10, 20]);
+      await expect(service.updateDiscount(ADMIN, 5, 0)).resolves.toEqual(CHILD);
+      expect(repository.update).toHaveBeenCalledWith(5, { discountPercent: 0 });
+    });
+
+    test('спроба встановити знижку не зі списку -> 400', async () => {
+      const { settings, service } = createService();
+      settings.get.mockReturnValue([10, 20]);
+      await expect(service.updateDiscount(ADMIN, 5, 30)).rejects.toThrow(BadRequestError);
+    });
+
+    test('не-адмін не може призначати знижку -> 403', async () => {
+      const { service } = createService();
+      await expect(service.updateDiscount(MANAGER, 5, 10)).rejects.toThrow(ForbiddenError);
+      await expect(service.updateDiscount(PARENT, 5, 10)).rejects.toThrow(ForbiddenError);
+    });
+
+    test('неіснуюча дитина -> 404', async () => {
+      const { repository, service } = createService();
+      repository.findById.mockResolvedValueOnce(null);
+      await expect(service.updateDiscount(ADMIN, 99, 10)).rejects.toThrow(NotFoundError);
+    });
   });
 
   describe('deactivate', () => {
@@ -248,6 +309,12 @@ describe('ChildrenService', () => {
       );
       repository.update.mockRejectedValueOnce(prismaError('P2025'));
       await expect(service.deactivate(MANAGER, 5)).rejects.toThrow(NotFoundError);
+    });
+
+    test('дитину видалили під час updateDiscount (P2025) -> 404', async () => {
+      const { repository, service } = createService();
+      repository.update.mockRejectedValueOnce(prismaError('P2025'));
+      await expect(service.updateDiscount(ADMIN, 5, 10)).rejects.toThrow('Дитину не знайдено');
     });
 
     test('невідома помилка прокидається як є', async () => {

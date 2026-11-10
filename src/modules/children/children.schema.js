@@ -66,9 +66,19 @@ const updateChildSchema = z.object({
     }),
 });
 
+const updateDiscountSchema = z.object({
+  params: idParams,
+  body: z
+    .object({
+      discountPercent: childFields.discountPercent,
+    })
+    .strict(),
+});
+
 module.exports = {
   childIdSchema,
   listChildrenSchema,
   createChildSchema,
   updateChildSchema,
+  updateDiscountSchema,
 };
