@@ -25,6 +25,8 @@ tags:
     description: Керування віковими групами та зарахування/виписка дітей
   - name: Children
     description: Облік та керування вихованцями садка
+  - name: Absences
+    description: Відсутність дитини. Якщо батьки повідомили до 08:30 (Київ) дня відсутності, харчування за цей день не нараховується
 components:
   securitySchemes:
     bearerAuth:
@@ -499,11 +501,25 @@ components:
               example: 1350000
             meals:
               type: integer
-              example: 800000
+              description: Харчування за mealDays днів (у копійках)
+              example: 760000
             total:
               type: integer
-              example: 2150000
+              example: 2110000
+            month:
+              type: string
+              description: Місяць розрахунку YYYY-MM (query month або поточний за Києвом)
+              example: '2026-10'
+            mealDays:
+              type: integer
+              description: Днів харчування = 21 − absentDays, не менше 0
+              example: 19
+            absentDays:
+              type: integer
+              description: Зараховані відсутності за місяць (повідомлені до 08:30 дня відсутності)
+              example: 2
         yearly:
+          description: Річна сума відсутностей не враховує — вони наперед невідомі
           type: object
           properties:
             total:
@@ -520,6 +536,55 @@ components:
         isPaid:
           type: boolean
           example: true
+    Absence:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 7
+        childId:
+          type: integer
+          example: 1
+        date:
+          type: string
+          format: date
+          example: '2026-11-12'
+        notifiedAt:
+          type: string
+          format: date-time
+          description: Коли батьки повідомили; ставить сервер
+          example: '2026-11-11T18:20:00.000Z'
+        counted:
+          type: boolean
+          description: notifiedAt раніше за 08:30 (Київ) дня date — харчування за день не нараховується
+          example: true
+    AbsenceCreate:
+      type: object
+      required: [date]
+      additionalProperties: false
+      properties:
+        date:
+          type: string
+          format: date
+          description: Будній день, не раніше за сьогодні (Київ). notifiedAt передавати не можна
+          example: '2026-11-12'
+    AbsenceListResponse:
+      type: object
+      properties:
+        childId:
+          type: integer
+          example: 1
+        month:
+          type: string
+          example: '2026-11'
+        countedDays:
+          type: integer
+          description: Скільки відсутностей зараховано (counted = true)
+          example: 1
+        absences:
+          type: array
+          items:
+            $ref: '#/components/schemas/Absence'
     PaymentRequest:
       type: object
       properties:
@@ -1305,6 +1370,11 @@ paths:
           description: Дитину не знайдено
     patch:
       summary: Оновлення картки дитини (ADMIN, MANAGER, PARENT)
+      description: |
+        Перевірки віку (на 1 вересня поточного навчального року):
+        - нова `birthDate` — вік від 2 до 5 років;
+        - нова `birthDate` дитини, яка лишається в групі, — вік дорівнює віку групи. Щоб змінити вік, спершу переведіть дитину в іншу групу;
+        - повернення вибулої дитини (`isActive: true`) — вік від 2 до 5 років.
       tags:
         - Children
       parameters:
@@ -1326,6 +1396,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Child'
+        '400':
+          description: Помилка валідації, вік поза межами 2–5 років або не збігається з віком групи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '403':
           description: Батьки можуть редагувати лише власну дитину і тільки дозволені поля
         '404':
@@ -1346,6 +1422,104 @@ paths:
         '404':
           description: Дитину не знайдено\n
   # --- PARENTS MODULE ---
+  /api/v1/children/{childId}/absences:
+    parameters:
+      - in: path
+        name: childId
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Повідомити про відсутність дитини (PARENT — лише своя дитина, ADMIN, MANAGER)
+      description: |
+        notifiedAt ставить сервер (поточний момент). Відсутність зараховується (counted = true),
+        якщо повідомили раніше за 08:30 за Києвом у день відсутності; пізніше — запис лишається,
+        але харчування за день нараховується.
+      tags:
+        - Absences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AbsenceCreate'
+      responses:
+        '201':
+          description: Відсутність записано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Absence'
+        '400':
+          description: Некоректна дата, вихідний, дата в минулому, дитина вибула або передано notifiedAt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Немає або недійсний токен
+        '403':
+          description: Роль без доступу (TEACHER)
+        '404':
+          description: Дитину не знайдено (і для чужої дитини батьків)
+        '409':
+          description: Відсутність на цю дату вже є
+    get:
+      summary: Відсутності дитини за місяць (PARENT — лише своя дитина, ADMIN, MANAGER)
+      tags:
+        - Absences
+      parameters:
+        - in: query
+          name: month
+          required: false
+          description: Місяць YYYY-MM; за замовчуванням поточний (за Києвом)
+          schema:
+            type: string
+            pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+            example: '2026-11'
+      responses:
+        '200':
+          description: Відсутності за місяць, від ранніх до пізніх
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AbsenceListResponse'
+        '400':
+          description: Некоректний month
+        '401':
+          description: Немає або недійсний токен
+        '403':
+          description: Роль без доступу (TEACHER)
+        '404':
+          description: Дитину не знайдено
+  /api/v1/children/{childId}/absences/{absenceId}:
+    delete:
+      summary: Скасувати відсутність (PARENT — лише своя дитина, ADMIN, MANAGER)
+      description: Можна до 08:30 за Києвом у день відсутності.
+      tags:
+        - Absences
+      parameters:
+        - in: path
+          name: childId
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: absenceId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Відсутність скасовано
+        '401':
+          description: Немає або недійсний токен
+        '403':
+          description: Роль без доступу (TEACHER)
+        '404':
+          description: Дитину або відсутність не знайдено (і для відсутності іншої дитини)
+        '409':
+          description: Уже 08:30 дня відсутності або пізніше — скасувати не можна
   /api/v1/parents:
     get:
       summary: Отримання списку батьків (ADMIN, MANAGER)
@@ -1607,6 +1781,9 @@ paths:
   /api/v1/billing/children/{childId}:
     get:
       summary: Розрахунок вартості навчання та харчування дитини (PARENT, ADMIN, MANAGER)
+      description: |
+        Харчування за місяць рахується за 21 день мінус зараховані відсутності цього місяця
+        (див. Absences). Навчання й річна сума від відсутностей не залежать.
       tags:
         - Billing
       parameters:
@@ -1615,6 +1792,14 @@ paths:
           required: true
           schema:
             type: integer
+        - in: query
+          name: month
+          required: false
+          description: Місяць YYYY-MM; за замовчуванням поточний (за Києвом)
+          schema:
+            type: string
+            pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+            example: '2026-10'
       responses:
         '200':
           description: Деталі чека за місяць і рік
@@ -1623,7 +1808,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/BillingCalculationResponse'
         '400':
-          description: Дитина не закріплена за віковою групою
+          description: Дитина не закріплена за віковою групою або некоректний month
         '404':
           description: Дитину не знайдено
   /api/v1/billing/children/{childId}/payments:

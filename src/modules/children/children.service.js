@@ -55,9 +55,14 @@ class ChildrenService {
     return visible;
   }
 
+  /** Вік на 1 вересня поточного навчального року */
+  ageOf(birthDate) {
+    return ageOnSeptemberFirst(birthDate, currentAcademicYear(this.now()));
+  }
+
   /** Вік на 1 вересня поточного навчального року має бути в межах MIN_AGE..MAX_AGE */
   assertAge(birthDate) {
-    const age = ageOnSeptemberFirst(birthDate, currentAcademicYear(this.now()));
+    const age = this.ageOf(birthDate);
     if (age < MIN_AGE || age > MAX_AGE) {
       throw new BadRequestError(
         `На 1 вересня дитині має бути від ${MIN_AGE} до ${MAX_AGE} років, а їй ${age}`
@@ -65,6 +70,20 @@ class ChildrenService {
     }
   }
 
+  /** Дитина лишається в групі, тож вік за новою датою народження має дорівнювати віку групи */
+  async assertGroupAge(groupId, birthDate) {
+    const group = await this.repository.findGroup(groupId);
+    if (!group) {
+      return; // групу видалили між читанням дитини й перевіркою: звіряти нема з чим
+    }
+    const age = this.ageOf(birthDate);
+    if (age !== group.age) {
+      throw new BadRequestError(
+        `Дитина в групі «${group.name}» для ${group.age}-річних, а за новою датою народження їй ${age}. ` +
+          'Спершу переведіть дитину в групу її віку'
+      );
+    }
+  }
   assertDiscountAllowed(discountPercent) {
     const allowed = [NO_DISCOUNT, ...this.settings.get('DISCOUNT_LEVELS')];
     if (!allowed.includes(discountPercent)) {
@@ -143,6 +162,18 @@ class ChildrenService {
     if (payload.isActive === false) {
       payload.groupId = null;
     }
+
+    if (data.birthDate !== undefined) {
+      this.assertAge(data.birthDate);
+      const staysInGroup = child.groupId !== null && payload.groupId !== null;
+      if (staysInGroup) {
+        await this.assertGroupAge(child.groupId, data.birthDate);
+      }
+    } else if (data.isActive === true && !child.isActive) {
+      // Повернення вибулої дитини: за час відсутності вона могла перерости MAX_AGE
+      this.assertAge(child.birthDate);
+    }
+    this.assertAdminFields(user, data);
 
     try {
       return this.toResponse(user, await this.repository.update(id, payload));

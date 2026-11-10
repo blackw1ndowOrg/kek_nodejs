@@ -50,6 +50,7 @@ describe('Billing API (Supertest)', () => {
     yearlyTotal.mockReturnValue(3780000);
     jest.spyOn(settingsService, 'get').mockImplementation((key) => SETTINGS[key]);
     jest.spyOn(billingRepository, 'findChildWithParents').mockResolvedValue(CHILD);
+    jest.spyOn(billingRepository, 'findAbsences').mockResolvedValue([]);
     jest.spyOn(billingRepository, 'updatePaidUntil').mockResolvedValue(1);
   });
 
@@ -126,6 +127,28 @@ describe('Billing API (Supertest)', () => {
       billingRepository.findChildWithParents.mockResolvedValueOnce({ ...CHILD, group: null });
       const res = await request(app)
         .get(`${BASE}/children/5`)
+        .set('Authorization', tokenFor('PARENT'));
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+    });
+
+    test('?month: харчування за цей місяць з урахуванням відсутностей', async () => {
+      billingRepository.findAbsences.mockResolvedValueOnce([
+        { date: new Date('2026-10-14T00:00:00Z'), notifiedAt: new Date('2026-10-13T18:00:00Z') },
+      ]);
+      const res = await request(app)
+        .get(`${BASE}/children/5?month=2026-10`)
+        .set('Authorization', tokenFor('PARENT'));
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.monthly).toMatchObject({ month: '2026-10', mealDays: 20, absentDays: 1 });
+      expect(billingRepository.findAbsences).toHaveBeenCalledWith(5, {
+        from: new Date('2026-10-01T00:00:00Z'),
+        to: new Date('2026-11-01T00:00:00Z'),
+      });
+    });
+
+    test('некоректний month -> 400', async () => {
+      const res = await request(app)
+        .get(`${BASE}/children/5?month=2026-13`)
         .set('Authorization', tokenFor('PARENT'));
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
     });

@@ -32,6 +32,8 @@ function createService() {
     countParents: jest.fn().mockResolvedValue(1),
     create: jest.fn().mockResolvedValue(CHILD),
     update: jest.fn().mockResolvedValue(CHILD),
+    // CHILD на 01.09.2026 має 4 роки — і група 3 для 4-річних
+    findGroup: jest.fn().mockResolvedValue({ name: 'Сонечко', age: 4 }),
   };
   const settings = { get: jest.fn().mockReturnValue([10, 20, 30]) };
   const service = new ChildrenService(repository, settings, () => TODAY);
@@ -195,9 +197,90 @@ describe('ChildrenService', () => {
       await expect(service.update(MANAGER, 5, { birthDate: birth('2019-05-05') })).rejects.toThrow(
         BadRequestError
       );
-      await expect(service.update(MANAGER, 5, { birthDate: birth('2023-05-05') })).resolves.toBe(
+      await expect(service.update(MANAGER, 5, { birthDate: birth('2022-01-10') })).resolves.toBe(
         CHILD
       );
+    });
+
+    describe('вік групи при зміні дати народження', () => {
+      test('новий вік не збігається з віком групи -> 400, нічого не записано', async () => {
+        const { repository, service } = createService();
+        await expect(
+          service.update(MANAGER, 5, { birthDate: birth('2023-05-05') })
+        ).rejects.toThrow(
+          'Дитина в групі «Сонечко» для 4-річних, а за новою датою народження їй 3'
+        );
+        expect(repository.findGroup).toHaveBeenCalledWith(3);
+        expect(repository.update).not.toHaveBeenCalled();
+      });
+
+      test('новий вік збігається з віком групи -> зберігається', async () => {
+        const { repository, service } = createService();
+        await service.update(MANAGER, 5, { birthDate: birth('2022-01-10') });
+        expect(repository.findGroup).toHaveBeenCalledWith(3);
+        expect(repository.update).toHaveBeenCalledWith(5, { birthDate: birth('2022-01-10') });
+      });
+
+      test('дитина без групи: перевіряється лише діапазон віку', async () => {
+        const { repository, service } = createService();
+        repository.findById.mockResolvedValueOnce({ ...CHILD, groupId: null });
+        await service.update(MANAGER, 5, { birthDate: birth('2023-05-05') });
+        expect(repository.findGroup).not.toHaveBeenCalled();
+        expect(repository.update).toHaveBeenCalled();
+      });
+
+      test('разом із деактивацією: дитина виходить із групи, вік групи не важливий', async () => {
+        const { repository, service } = createService();
+        await service.update(MANAGER, 5, { birthDate: birth('2023-05-05'), isActive: false });
+        expect(repository.findGroup).not.toHaveBeenCalled();
+        expect(repository.update).toHaveBeenCalledWith(5, {
+          birthDate: birth('2023-05-05'),
+          isActive: false,
+          groupId: null,
+        });
+      });
+
+      test('групу видалили між читанням дитини й перевіркою -> перевірка пропускається', async () => {
+        const { repository, service } = createService();
+        repository.findGroup.mockResolvedValueOnce(null);
+        await expect(service.update(MANAGER, 5, { birthDate: birth('2023-05-05') })).resolves.toBe(
+          CHILD
+        );
+      });
+    });
+
+    describe('повернення вибулої дитини (isActive: true)', () => {
+      const INACTIVE = { ...CHILD, isActive: false, groupId: null };
+
+      test('за час відсутності переросла MAX_AGE -> 400, нічого не записано', async () => {
+        const { repository, service } = createService();
+        repository.findById.mockResolvedValueOnce({ ...INACTIVE, birthDate: birth('2020-06-01') });
+        await expect(service.update(MANAGER, 5, { isActive: true })).rejects.toThrow(
+          'На 1 вересня дитині має бути від 2 до 5 років, а їй 6'
+        );
+        expect(repository.update).not.toHaveBeenCalled();
+      });
+
+      test('вік у межах -> повертається без групи', async () => {
+        const { repository, service } = createService();
+        repository.findById.mockResolvedValueOnce(INACTIVE);
+        await service.update(MANAGER, 5, { isActive: true });
+        expect(repository.update).toHaveBeenCalledWith(5, { isActive: true });
+      });
+
+      test('разом із новою датою народження перевіряється нова дата', async () => {
+        const { repository, service } = createService();
+        repository.findById.mockResolvedValueOnce({ ...INACTIVE, birthDate: birth('2020-06-01') });
+        await service.update(MANAGER, 5, { isActive: true, birthDate: birth('2023-05-05') });
+        expect(repository.findGroup).not.toHaveBeenCalled();
+        expect(repository.update).toHaveBeenCalled();
+      });
+
+      test('isActive: true для вже активної дитини вік не перевіряє', async () => {
+        const { repository, service } = createService();
+        repository.findById.mockResolvedValueOnce({ ...CHILD, birthDate: birth('2020-06-01') });
+        await expect(service.update(MANAGER, 5, { isActive: true })).resolves.toBe(CHILD);
+      });
     });
 
     test('знижку змінює лише адмін', async () => {

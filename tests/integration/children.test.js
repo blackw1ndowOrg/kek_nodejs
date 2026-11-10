@@ -43,6 +43,7 @@ describe('Children API (Supertest)', () => {
     jest.spyOn(childrenRepository, 'countParents').mockResolvedValue(1);
     jest.spyOn(childrenRepository, 'create').mockResolvedValue(CHILD);
     jest.spyOn(childrenRepository, 'update').mockResolvedValue(CHILD);
+    jest.spyOn(childrenRepository, 'findGroup').mockResolvedValue({ name: 'Сонечко', age: 3 });
   });
 
   afterEach(() => {
@@ -216,6 +217,41 @@ describe('Children API (Supertest)', () => {
         .set('Authorization', tokenFor('ADMIN', 1))
         .send({});
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+    });
+
+    test('дата народження не за віком групи -> 400, нічого не записано', async () => {
+      const res = await request(app)
+        .patch(`${BASE}/5`)
+        .set('Authorization', tokenFor('MANAGER', 2))
+        .send({ birthDate: `${birthYear(5)}-03-15` });
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.message).toMatch('Спершу переведіть дитину');
+      expect(childrenRepository.findGroup).toHaveBeenCalledWith(3);
+      expect(childrenRepository.update).not.toHaveBeenCalled();
+    });
+
+    test('дата народження за віком групи -> 200', async () => {
+      const res = await request(app)
+        .patch(`${BASE}/5`)
+        .set('Authorization', tokenFor('MANAGER', 2))
+        .send({ birthDate: `${birthYear(3)}-01-10` });
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(childrenRepository.update).toHaveBeenCalled();
+    });
+
+    test('повернення вибулої дитини, що переросла 5 років -> 400', async () => {
+      childrenRepository.findById.mockResolvedValueOnce({
+        ...CHILD,
+        isActive: false,
+        groupId: null,
+        birthDate: `${birthYear(6)}-03-15T00:00:00.000Z`,
+      });
+      const res = await request(app)
+        .patch(`${BASE}/5`)
+        .set('Authorization', tokenFor('MANAGER', 2))
+        .send({ isActive: true });
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(childrenRepository.update).not.toHaveBeenCalled();
     });
   });
 
