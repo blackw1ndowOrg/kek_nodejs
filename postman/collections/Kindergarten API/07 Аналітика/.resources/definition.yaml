@@ -1,3 +1,0 @@
-$kind: collection
-description: Профіт групи, профіт садка, прогноз. Суми перевіряються з цифрами з ТЗ; тільки ADMIN і MANAGER.
-order: 8000
