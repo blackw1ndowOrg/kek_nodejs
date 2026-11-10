@@ -84,19 +84,25 @@ class ChildrenService {
       );
     }
   }
+  assertDiscountAllowed(discountPercent) {
+    const allowed = [NO_DISCOUNT, ...this.settings.get('DISCOUNT_LEVELS')];
+    if (!allowed.includes(discountPercent)) {
+      throw new BadRequestError(
+        `Знижка має бути одним зі значень ${allowed.join(', ')}, отримано ${discountPercent}`
+      );
+    }
+  }
 
-  /** Знижку й кумівство змінює лише адмін; знижка — 0 або один із рівнів у налаштуваннях */
-  assertAdminFields(user, data) {
+  /** Знижку й кумівство змінює лише адмін; знижка перевіряється за списком лише якщо призначається або змінюється */
+  assertAdminFields(user, data, existingChild = null) {
     const adminFields = ADMIN_ONLY_FIELDS.filter((field) => data[field] !== undefined);
     if (adminFields.length > 0 && user.role !== Role.ADMIN) {
       throw new ForbiddenError(`Лише адміністратор може змінювати: ${adminFields.join(', ')}`);
     }
     if (data.discountPercent !== undefined) {
-      const allowed = [NO_DISCOUNT, ...this.settings.get('DISCOUNT_LEVELS')];
-      if (!allowed.includes(data.discountPercent)) {
-        throw new BadRequestError(
-          `Знижка має бути одним зі значень ${allowed.join(', ')}, отримано ${data.discountPercent}`
-        );
+      const isChanging = !existingChild || data.discountPercent !== existingChild.discountPercent;
+      if (isChanging) {
+        this.assertDiscountAllowed(data.discountPercent);
       }
     }
   }
@@ -139,7 +145,7 @@ class ChildrenService {
   }
 
   async update(user, id, data) {
-    const child = await this.findAccessible(user, id);
+    const existing = await this.findAccessible(user, id);
 
     if (user.role === Role.PARENT) {
       const forbidden = Object.keys(data).filter((key) => !PARENT_EDITABLE_FIELDS.includes(key));
@@ -147,6 +153,10 @@ class ChildrenService {
         throw new ForbiddenError('Батьки можуть змінювати лише примітки (notes)');
       }
     }
+    if (data.birthDate !== undefined) {
+      this.assertAge(data.birthDate);
+    }
+    this.assertAdminFields(user, data, existing);
 
     const payload = { ...data };
     if (payload.isActive === false) {
@@ -167,6 +177,19 @@ class ChildrenService {
 
     try {
       return this.toResponse(user, await this.repository.update(id, payload));
+    } catch (error) {
+      throw translateDbError(error, CHILD_NOT_FOUND);
+    }
+  }
+
+  async updateDiscount(user, id, discountPercent) {
+    if (user.role !== Role.ADMIN) {
+      throw new ForbiddenError('Лише адміністратор може призначати знижку');
+    }
+    this.assertDiscountAllowed(discountPercent);
+    await this.findAccessible(user, id);
+    try {
+      return this.toResponse(user, await this.repository.update(id, { discountPercent }));
     } catch (error) {
       throw translateDbError(error, CHILD_NOT_FOUND);
     }

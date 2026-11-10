@@ -26,6 +26,15 @@ class ChildrenController {
     res.status(StatusCodes.OK).json(child);
   };
 
+  updateDiscount = async (req, res) => {
+    const child = await this.service.updateDiscount(
+      req.user,
+      req.params.id,
+      req.body.discountPercent
+    );
+    res.status(StatusCodes.OK).json(child);
+  };
+
   deactivate = async (req, res) => {
     await this.service.deactivate(req.user, req.params.id);
     res.status(StatusCodes.NO_CONTENT).send();

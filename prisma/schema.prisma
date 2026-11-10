@@ -170,3 +170,15 @@ model Setting {
   key   String @id
   value Json
 }
+
+model StateHistory {
+  id          Int      @id @default(autoincrement())
+  entityName  String
+  entityId    String?
+  action      String
+  beforeState Json?
+  afterState  Json?
+  createdAt   DateTime @default(now())
+
+  @@index([entityName, entityId])
+}

@@ -5,6 +5,7 @@ const { createApp } = require('../../src/app');
 const { config } = require('../../src/config');
 const { ErrorCodes } = require('../../src/errors/errorCodes');
 const { childrenRepository } = require('../../src/modules/children/children.repository');
+const { settingsService } = require('../../src/modules/settings/settings.service');
 const { currentAcademicYear } = require('../../src/domain/age');
 
 // Справжній HTTP-ланцюжок: routes -> auth -> authorize -> validate -> controller -> service.
@@ -188,6 +189,20 @@ describe('Children API (Supertest)', () => {
       expect(res.body).not.toHaveProperty('discountPercent');
     });
 
+    test('дитина зі збереженою 30% знижкою при DISCOUNT_LEVELS [10, 20]: оновлення notes повертає 200', async () => {
+      jest.spyOn(settingsService, 'get').mockImplementation((key) => {
+        if (key === 'DISCOUNT_LEVELS') return [10, 20];
+        return null;
+      });
+      childrenRepository.findById.mockResolvedValueOnce({ ...CHILD, discountPercent: 30 });
+
+      const res = await request(app)
+        .patch(`${BASE}/5`)
+        .set('Authorization', tokenFor('MANAGER', 2))
+        .send({ notes: 'нова примітка' });
+      expect(res.status).toBe(StatusCodes.OK);
+    });
+
     test('батько змінює інше поле -> 403', async () => {
       const res = await request(app)
         .patch(`${BASE}/5`)
@@ -237,6 +252,57 @@ describe('Children API (Supertest)', () => {
         .send({ isActive: true });
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
       expect(childrenRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('PATCH /children/:id/discount', () => {
+    test('адмін: зі значенням 10 -> 200', async () => {
+      jest.spyOn(settingsService, 'get').mockImplementation((key) => {
+        if (key === 'DISCOUNT_LEVELS') return [10, 20];
+        return null;
+      });
+      const res = await request(app)
+        .patch(`${BASE}/5/discount`)
+        .set('Authorization', tokenFor('ADMIN', 1))
+        .send({ discountPercent: 10 });
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(childrenRepository.update).toHaveBeenCalledWith(5, { discountPercent: 10 });
+    });
+
+    test('адмін: зі значенням 30 при DISCOUNT_LEVELS [10, 20] -> 400', async () => {
+      jest.spyOn(settingsService, 'get').mockImplementation((key) => {
+        if (key === 'DISCOUNT_LEVELS') return [10, 20];
+        return null;
+      });
+      const res = await request(app)
+        .patch(`${BASE}/5/discount`)
+        .set('Authorization', tokenFor('ADMIN', 1))
+        .send({ discountPercent: 30 });
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+    });
+
+    test('менеджер -> 403', async () => {
+      const res = await request(app)
+        .patch(`${BASE}/5/discount`)
+        .set('Authorization', tokenFor('MANAGER', 2))
+        .send({ discountPercent: 10 });
+      expect(res.status).toBe(StatusCodes.FORBIDDEN);
+    });
+
+    test('батько -> 403', async () => {
+      const res = await request(app)
+        .patch(`${BASE}/5/discount`)
+        .set('Authorization', tokenFor('PARENT'))
+        .send({ discountPercent: 10 });
+      expect(res.status).toBe(StatusCodes.FORBIDDEN);
+    });
+
+    test('невалідне тіло -> 400', async () => {
+      const res = await request(app)
+        .patch(`${BASE}/5/discount`)
+        .set('Authorization', tokenFor('ADMIN', 1))
+        .send({ discountPercent: 150 });
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
     });
   });
 
