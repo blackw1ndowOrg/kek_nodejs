@@ -69,9 +69,12 @@ describe('tuitionMonthly (копійки)', () => {
     expect(tuitionMonthly(discount)).toBe(expected);
   });
 
-  test.each([-10, 105, 3.5, '20', undefined, null])('невалідна знижка %p -> BadRequestError', (discount) => {
-    expect(() => tuitionMonthly(discount)).toThrow(BadRequestError);
-  });
+  test.each([-10, 105, 3.5, '20', undefined, null])(
+    'невалідна знижка %p -> BadRequestError',
+    (discount) => {
+      expect(() => tuitionMonthly(discount)).toThrow(BadRequestError);
+    }
+  );
 
   test('зберігає розрахунок для збереженої знижки 30% навіть якщо discountLevels [10, 20]', () => {
     expect(tuitionMonthly(30, 1500000, [10, 20])).toBe(1050000);

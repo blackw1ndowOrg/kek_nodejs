@@ -297,15 +297,11 @@ describe('ChildrenService', () => {
       repository.findById.mockResolvedValueOnce({ ...CHILD, discountPercent: 30 });
 
       // Зміна notes не перевіряє стару знижку
-      await expect(
-        service.update(MANAGER, 5, { notes: 'нова примітка' })
-      ).resolves.toBeDefined();
+      await expect(service.update(MANAGER, 5, { notes: 'нова примітка' })).resolves.toBeDefined();
 
       // Передача тієї самої знижки не викидає помилку
       repository.findById.mockResolvedValueOnce({ ...CHILD, discountPercent: 30 });
-      await expect(
-        service.update(ADMIN, 5, { discountPercent: 30 })
-      ).resolves.toBeDefined();
+      await expect(service.update(ADMIN, 5, { discountPercent: 30 })).resolves.toBeDefined();
     });
 
     test('зміна знижки на значення не зі списку discountLevels -> 400', async () => {
@@ -313,9 +309,9 @@ describe('ChildrenService', () => {
       settings.get.mockReturnValue([10, 20]);
       repository.findById.mockResolvedValueOnce({ ...CHILD, discountPercent: 10 });
 
-      await expect(
-        service.update(ADMIN, 5, { discountPercent: 40 })
-      ).rejects.toThrow(BadRequestError);
+      await expect(service.update(ADMIN, 5, { discountPercent: 40 })).rejects.toThrow(
+        BadRequestError
+      );
     });
   });
 
