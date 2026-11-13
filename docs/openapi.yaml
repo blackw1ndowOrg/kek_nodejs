@@ -536,6 +536,294 @@ components:
         isPaid:
           type: boolean
           example: true
+  PriceTagResponse:
+    type: object
+    required:
+      - childId
+      - fullName
+      - groupAge
+      - discountPercent
+      - paymentPlan
+      - currency
+      - total
+      - amountDue
+      - monthly
+      - yearly
+      - tuition
+      - meals
+      - plans
+      - savings
+    properties:
+      childId:
+        type: integer
+        example: 5
+      fullName:
+        type: string
+        example: Петренко Максим Васильович
+      groupAge:
+        type: integer
+        description: Вік групи дитини (визначає ставку харчування)
+        example: 3
+      discountPercent:
+        type: integer
+        description: Відсоток індивідуальної пільги дитини (0, 10, 20 або 30)
+        example: 20
+      paymentPlan:
+        type: string
+        enum: [MONTHLY, YEARLY]
+        example: MONTHLY
+      currency:
+        type: string
+        example: UAH
+      paidUntil:
+        type: string
+        format: date
+        nullable: true
+        example: "2026-11-30"
+      isPaid:
+        type: boolean
+        example: false
+      total:
+        type: integer
+        description: Сума до оплати у копійках (відповідає amountDue з білінгу)
+        example: 2040000
+      amountDue:
+        type: integer
+        description: Сума до оплати у копійках для поточного плану дитини
+        example: 2040000
+      monthly:
+        type: object
+        properties:
+          tuition:
+            type: integer
+            example: 1200000
+          meals:
+            type: integer
+            example: 840000
+          total:
+            type: integer
+            example: 2040000
+          month:
+            type: string
+            example: "2026-10"
+          mealDays:
+            type: integer
+            example: 21
+          absentDays:
+            type: integer
+            example: 0
+      yearly:
+        type: object
+        properties:
+          tuition:
+            type: integer
+            example: 12672000
+          meals:
+            type: integer
+            example: 10080000
+          total:
+            type: integer
+            example: 22752000
+      tuition:
+        type: object
+        description: Детальний розклад вартості навчання
+        properties:
+          base:
+            type: integer
+            description: Базова ціна за місяць у копійках (15 000 грн)
+            example: 1500000
+          discountPercent:
+            type: integer
+            example: 20
+          discountAmount:
+            type: integer
+            description: Розмір пільги за місяць у копійках
+            example: 300000
+          discountUah:
+            type: number
+            description: Розмір пільги за місяць у гривнях
+            example: 3000
+          yearlyDiscountPercent:
+            type: integer
+            description: Знижка за річний план на навчання (12%)
+            example: 12
+          monthlyTuition:
+            type: integer
+            description: Підсумок за місяць з урахуванням пільги
+            example: 1200000
+          yearlyTuition:
+            type: integer
+            description: Підсумок за рік з урахуванням 12% річної знижки
+            example: 12672000
+          yearlyMonthlyEquivalent:
+            type: integer
+            description: Еквівалент навчання на місяць за річним планом (15 000 * (1 - discount/100) * 0.88)
+            example: 1056000
+      meals:
+        type: object
+        description: Детальний розклад вартості харчування
+        properties:
+          groupAge:
+            type: integer
+            example: 3
+          ratePerDay:
+            type: integer
+            description: Денна ставка харчування у копійках (без жодних знижок)
+            example: 40000
+          workingDays:
+            type: integer
+            description: Кількість робочих днів у місяці
+            example: 21
+          absentDays:
+            type: integer
+            description: Зараховані дні відсутності (попереджено до 08:30)
+            example: 0
+          billableDays:
+            type: integer
+            description: Оплачувані дні (workingDays - absentDays)
+            example: 21
+          total:
+            type: integer
+            description: Підсумок харчування за місяць у копійках
+            example: 840000
+          yearlyWorkingDays:
+            type: integer
+            description: Кількість робочих днів у році
+            example: 252
+          yearlyTotal:
+            type: integer
+            description: Підсумок харчування за рік у копійках
+            example: 10080000
+          month:
+            type: string
+            example: "2026-10"
+      plans:
+        type: object
+        description: Порівняння помісячного та річного планів
+        properties:
+          monthly:
+            type: object
+            properties:
+              tuition:
+                type: object
+                properties:
+                  base:
+                    type: integer
+                    example: 1500000
+                  discountPercent:
+                    type: integer
+                    example: 20
+                  discountAmount:
+                    type: integer
+                    example: 300000
+                  discountUah:
+                    type: number
+                    example: 3000
+                  total:
+                    type: integer
+                    example: 1200000
+              meals:
+                type: object
+                properties:
+                  groupAge:
+                    type: integer
+                    example: 3
+                  ratePerDay:
+                    type: integer
+                    example: 40000
+                  workingDays:
+                    type: integer
+                    example: 21
+                  absentDays:
+                    type: integer
+                    example: 0
+                  billableDays:
+                    type: integer
+                    example: 21
+                  total:
+                    type: integer
+                    example: 840000
+              total:
+                type: integer
+                example: 2040000
+          yearly:
+            type: object
+            properties:
+              tuition:
+                type: object
+                properties:
+                  base:
+                    type: integer
+                    example: 18000000
+                  baseMonthly:
+                    type: integer
+                    example: 1500000
+                  discountPercent:
+                    type: integer
+                    example: 20
+                  yearlyDiscountPercent:
+                    type: integer
+                    example: 12
+                  monthlyEquivalent:
+                    type: integer
+                    example: 1056000
+                  total:
+                    type: integer
+                    example: 12672000
+              meals:
+                type: object
+                properties:
+                  groupAge:
+                    type: integer
+                    example: 3
+                  ratePerDay:
+                    type: integer
+                    example: 40000
+                  workingDays:
+                    type: integer
+                    example: 252
+                  absentDays:
+                    type: integer
+                    example: 0
+                  billableDays:
+                    type: integer
+                    example: 252
+                  total:
+                    type: integer
+                    example: 10080000
+              total:
+                type: integer
+                example: 22752000
+          savings:
+            type: object
+            description: Економія при виборі річного плану
+            properties:
+              amount:
+                type: integer
+                description: Сума економії за рік у копійках
+                example: 1728000
+              amountUah:
+                type: number
+                description: Сума економії за рік у гривнях
+                example: 17280
+              percent:
+                type: integer
+                example: 12
+              description:
+                type: string
+                example: Економія 12% на оплаті навчання за рік
+      savings:
+        type: object
+        properties:
+          amount:
+            type: integer
+            example: 1728000
+          amountUah:
+            type: number
+            example: 17280
+          percent:
+            type: integer
+            example: 12        
     Absence:
       type: object
       properties:
@@ -1811,6 +2099,48 @@ paths:
           description: Дитина не закріплена за віковою групою або некоректний month
         '404':
           description: Дитину не знайдено
+  /api/v1/billing/children/{childId}/price-tag:
+  get:
+    summary: Детальний розклад вартості (Price Tag) для батьків (PARENT, ADMIN, MANAGER)
+    description: |
+      Повертає детальний розклад формування суми до оплати:
+      - Навчання: базова вартість, розмір пільги (відсоток і сума), річна знижка 12%, місячний та річний підсумок.
+      - Харчування: ставка за день за віком групи, кількість робочих днів, вирахувані дні зарахованих відсутностей. Харчування не зменшується пільгами та знижками.
+      - Два плани поруч: місячний (MONTHLY) та річний (YEARLY) з точно розрахованою річною економією.
+      - Сума total строго дорівнює amountDue з білінгу.
+      - Кумівство не відображається.
+    tags:
+      - Billing
+    parameters:
+      - in: path
+        name: childId
+        required: true
+        schema:
+          type: integer
+        example: 5
+      - in: query
+        name: month
+        required: false
+        description: Місяць розрахунку YYYY-MM; за замовчуванням поточний (за Києвом)
+        schema:
+          type: string
+          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+          example: "2026-10"
+    responses:
+      "200":
+        description: Детальний розклад цінника дитини
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceTagResponse"
+      "400":
+        description: Помилка валідації (некоректний childId, невірний формат month або дитина не закріплена за групою)
+      "401":
+        description: Не авторизовано (відсутній або невалідний токен)
+      "403":
+        description: Заборонено (роль TEACHER не має доступу)
+      "404":
+        description: Дитину не знайдено або чужа дитина для ролі PARENT
   /api/v1/billing/children/{childId}/payments:
     post:
       summary: Проведення оплати за навчання дитини (PARENT, ADMIN, MANAGER)
