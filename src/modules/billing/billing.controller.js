@@ -16,6 +16,16 @@ class BillingController {
     res.status(StatusCodes.OK).json(result);
   };
 
+  getPriceTag = async (req, res) => {
+    const result = await this.service.getPriceTag(
+      req.user,
+      req.params.childId,
+      undefined,
+      req.query.month
+    );
+    res.status(StatusCodes.OK).json(result);
+  };
+
   pay = async (req, res) => {
     const result = await this.service.payForChild(req.user, req.params.childId, req.body?.plan);
     res.status(StatusCodes.CREATED).json(result);

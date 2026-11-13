@@ -74,4 +74,70 @@ describe('Billing: харчування з урахуванням відсутн
     expect(withAbsences.monthly.tuition).toBe(without.monthly.tuition);
     expect(withAbsences.yearly).toEqual(without.yearly);
   });
+
+  describe('getPriceTag (справжні формули)', () => {
+    function priceTagWith(absences, childOverrides = {}) {
+      const repository = {
+        findChildWithParents: jest.fn().mockResolvedValue({ ...CHILD, ...childOverrides }),
+        findAbsences: jest.fn().mockResolvedValue(absences),
+      };
+      const settings = { get: (key) => SETTINGS[key] };
+      return new BillingService(repository, settings).getPriceTag(PARENT, 5, NOW, '2026-10');
+    }
+
+    test('total цінника завжди дорівнює amountDue з getChildBilling', async () => {
+      const bill = await billingWith([]);
+      const priceTag = await priceTagWith([]);
+
+      expect(priceTag.total).toBe(bill.amountDue);
+      expect(priceTag.amountDue).toBe(bill.amountDue);
+      expect(priceTag.monthly.total).toBe(bill.monthly.total);
+      expect(priceTag.yearly.total).toBe(bill.yearly.total);
+    });
+
+    test('розклад для дитини з пільгою 30%: річне навчання 15 000 × 0,7 × 0,88 на місяць', async () => {
+      const priceTag = await priceTagWith([], { discountPercent: 30 });
+
+      // Навчання
+      expect(priceTag.tuition.base).toBe(1500000);
+      expect(priceTag.tuition.discountPercent).toBe(30);
+      expect(priceTag.tuition.discountAmount).toBe(450000);
+      expect(priceTag.tuition.discountUah).toBe(4500);
+      expect(priceTag.tuition.yearlyDiscountPercent).toBe(12);
+      expect(priceTag.tuition.monthlyTuition).toBe(1050000); // 15 000 * 0.7 = 10 500 грн
+      expect(priceTag.tuition.yearlyMonthlyEquivalent).toBe(924000); // 15 000 * 0.7 * 0.88 = 9 240 грн
+      expect(priceTag.tuition.yearlyTuition).toBe(11088000);
+
+      // Харчування не знижується ні пільгою, ні знижкою року
+      expect(priceTag.meals.ratePerDay).toBe(40000);
+      expect(priceTag.meals.total).toBe(840000); // 40 000 * 21
+      expect(priceTag.meals.yearlyTotal).toBe(10080000); // 40 000 * 252
+
+      // Два плани поруч з економією
+      expect(priceTag.plans.monthly.total).toBe(1050000 + 840000);
+      expect(priceTag.plans.yearly.total).toBe(11088000 + 10080000);
+      expect(priceTag.plans.savings.amount).toBe(1512000);
+      expect(priceTag.plans.savings.percent).toBe(12);
+    });
+
+    test('дитина з відсутностями: зменшуються дні харчування, total = amountDue', async () => {
+      const absences = [
+        absence('2026-10-14', '2026-10-13T19:00:00+03:00'),
+        absence('2026-10-20', '2026-10-20T08:29:59+03:00'),
+      ];
+      const bill = await billingWith(absences);
+      const priceTag = await priceTagWith(absences);
+
+      expect(priceTag.meals.absentDays).toBe(2);
+      expect(priceTag.meals.billableDays).toBe(19);
+      expect(priceTag.meals.total).toBe(40000 * 19);
+      expect(priceTag.total).toBe(bill.amountDue);
+    });
+
+    test('дитина з річним планом оплати (YEARLY): total = yearly.total', async () => {
+      const priceTag = await priceTagWith([], { paymentPlan: 'YEARLY' });
+      expect(priceTag.total).toBe(priceTag.yearly.total);
+      expect(priceTag.amountDue).toBe(priceTag.yearly.total);
+    });
+  });
 });

@@ -1,8 +1,13 @@
-jest.mock('../../src/domain/pricing', () => ({
-  tuitionMonthly: jest.fn(),
-  monthlyTotal: jest.fn(),
-  yearlyTotal: jest.fn(),
-}));
+jest.mock('../../src/domain/pricing', () => {
+  const actual = jest.requireActual('../../src/domain/pricing');
+  return {
+    ...actual,
+    tuitionMonthly: jest.fn(),
+    monthlyTotal: jest.fn(),
+    yearlyTotal: jest.fn(),
+    calculatePriceTag: jest.fn(),
+  };
+});
 
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
@@ -10,7 +15,12 @@ const { StatusCodes } = require('http-status-codes');
 const { createApp } = require('../../src/app');
 const { config } = require('../../src/config');
 const { ErrorCodes } = require('../../src/errors/errorCodes');
-const { tuitionMonthly, monthlyTotal, yearlyTotal } = require('../../src/domain/pricing');
+const {
+  tuitionMonthly,
+  monthlyTotal,
+  yearlyTotal,
+  calculatePriceTag,
+} = require('../../src/domain/pricing');
 const { billingRepository } = require('../../src/modules/billing/billing.repository');
 const { settingsService } = require('../../src/modules/settings/settings.service');
 
@@ -48,6 +58,49 @@ describe('Billing API (Supertest)', () => {
     tuitionMonthly.mockReturnValue(270000);
     monthlyTotal.mockReturnValue(350000);
     yearlyTotal.mockReturnValue(3780000);
+    calculatePriceTag.mockReturnValue({
+      groupAge: 3,
+      tuition: {
+        base: 300000,
+        discountPercent: 10,
+        discountAmount: 30000,
+        discountUah: 300,
+        yearlyDiscountPercent: 10,
+        monthlyTuition: 270000,
+        yearlyTuition: 2916000,
+        yearlyMonthlyEquivalent: 243000,
+      },
+      meals: {
+        groupAge: 3,
+        ratePerDay: 5500,
+        workingDays: 21,
+        absentDays: 0,
+        billableDays: 21,
+        total: 115500,
+        yearlyWorkingDays: 252,
+        yearlyTotal: 1386000,
+      },
+      monthly: {
+        tuition: 270000,
+        meals: 115500,
+        total: 350000,
+      },
+      yearly: {
+        tuition: 2916000,
+        meals: 1386000,
+        total: 3780000,
+      },
+      plans: {
+        monthly: { total: 350000 },
+        yearly: { total: 3780000 },
+        savings: { amount: 324000, percent: 10 },
+      },
+      savings: {
+        amount: 324000,
+        amountUah: 3240,
+        percent: 10,
+      },
+    });
     jest.spyOn(settingsService, 'get').mockImplementation((key) => SETTINGS[key]);
     jest.spyOn(billingRepository, 'findChildWithParents').mockResolvedValue(CHILD);
     jest.spyOn(billingRepository, 'findAbsences').mockResolvedValue([]);
@@ -66,6 +119,7 @@ describe('Billing API (Supertest)', () => {
 
     test.each([
       ['get', `${BASE}/children/5`],
+      ['get', `${BASE}/children/5/price-tag`],
       ['post', `${BASE}/children/5/payments`],
     ])('TEACHER: %s %s -> 403', async (method, url) => {
       const res = await request(app)[method](url).set('Authorization', tokenFor('TEACHER'));
@@ -159,6 +213,138 @@ describe('Billing API (Supertest)', () => {
         .set('Authorization', tokenFor('ADMIN'));
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
       expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+  });
+
+  describe('GET /billing/children/:childId/price-tag', () => {
+    test('батько: 200 OK і детальний розклад цінника своєї дитини', async () => {
+      const res = await request(app)
+        .get(`${BASE}/children/5/price-tag`)
+        .set('Authorization', tokenFor('PARENT'));
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body).toMatchObject({
+        childId: 5,
+        currency: 'UAH',
+        groupAge: 3,
+        paymentPlan: 'MONTHLY',
+        total: 350000,
+        amountDue: 350000,
+        monthly: {
+          total: 350000,
+        },
+        yearly: {
+          total: 3780000,
+        },
+      });
+      expect(res.body).not.toHaveProperty('hasDeputyRelatives');
+    });
+
+    test.each(['ADMIN', 'MANAGER'])('%s бачить цінник будь-якої дитини', async (role) => {
+      const res = await request(app)
+        .get(`${BASE}/children/5/price-tag`)
+        .set('Authorization', tokenFor(role, 1));
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.childId).toBe(5);
+    });
+
+    test('чужа дитина для PARENT -> 404', async () => {
+      const res = await request(app)
+        .get(`${BASE}/children/5/price-tag`)
+        .set('Authorization', tokenFor('PARENT', 77));
+      expect(res.status).toBe(StatusCodes.NOT_FOUND);
+    });
+
+    test('неіснуюча дитина -> 404', async () => {
+      billingRepository.findChildWithParents.mockResolvedValueOnce(null);
+      const res = await request(app)
+        .get(`${BASE}/children/999/price-tag`)
+        .set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.NOT_FOUND);
+    });
+
+    test('дитина без групи -> 400', async () => {
+      billingRepository.findChildWithParents.mockResolvedValueOnce({ ...CHILD, group: null });
+      const res = await request(app)
+        .get(`${BASE}/children/5/price-tag`)
+        .set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+    });
+
+    test('некоректний childId -> 400', async () => {
+      const res = await request(app)
+        .get(`${BASE}/children/abc/price-tag`)
+        .set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    test('некоректний month -> 400', async () => {
+      const res = await request(app)
+        .get(`${BASE}/children/5/price-tag?month=invalid`)
+        .set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    describe('інтеграційні бізнес-сценарії (зі справжнім розрахунком calculatePriceTag)', () => {
+      beforeEach(() => {
+        const actualPricing = jest.requireActual('../../src/domain/pricing');
+        calculatePriceTag.mockImplementation(actualPricing.calculatePriceTag);
+      });
+
+      test('сценарій: дитина з пільгою 20% (MONTHLY план)', async () => {
+        billingRepository.findChildWithParents.mockResolvedValueOnce({
+          ...CHILD,
+          discountPercent: 20,
+          paymentPlan: 'MONTHLY',
+        });
+
+        const res = await request(app)
+          .get(`${BASE}/children/5/price-tag`)
+          .set('Authorization', tokenFor('PARENT'));
+
+        expect(res.status).toBe(StatusCodes.OK);
+        expect(res.body.tuition.base).toBe(300000);
+        expect(res.body.tuition.discountPercent).toBe(20);
+        expect(res.body.tuition.discountAmount).toBe(60000);
+        expect(res.body.tuition.monthlyTuition).toBe(240000);
+        expect(res.body.total).toBe(res.body.amountDue);
+      });
+
+      test('сценарій: дитина з річним планом (YEARLY) — річна знижка 10% на навчання', async () => {
+        billingRepository.findChildWithParents.mockResolvedValueOnce({
+          ...CHILD,
+          discountPercent: 10,
+          paymentPlan: 'YEARLY',
+        });
+
+        const res = await request(app)
+          .get(`${BASE}/children/5/price-tag`)
+          .set('Authorization', tokenFor('PARENT'));
+
+        expect(res.status).toBe(StatusCodes.OK);
+        expect(res.body.paymentPlan).toBe('YEARLY');
+        expect(res.body.total).toBe(res.body.yearly.total);
+        expect(res.body.amountDue).toBe(res.body.yearly.total);
+        expect(res.body.plans.savings.amount).toBeGreaterThan(0);
+      });
+
+      test('сценарій: дитина з відсутностями зменшує лише дні харчування в місяці', async () => {
+        billingRepository.findAbsences.mockResolvedValueOnce([
+          { date: new Date('2026-10-14T00:00:00Z'), notifiedAt: new Date('2026-10-13T18:00:00Z') },
+          { date: new Date('2026-10-15T00:00:00Z'), notifiedAt: new Date('2026-10-15T05:00:00Z') },
+        ]);
+
+        const res = await request(app)
+          .get(`${BASE}/children/5/price-tag?month=2026-10`)
+          .set('Authorization', tokenFor('PARENT'));
+
+        expect(res.status).toBe(StatusCodes.OK);
+        expect(res.body.meals.absentDays).toBe(2);
+        expect(res.body.meals.billableDays).toBe(19);
+        expect(res.body.monthly.mealDays).toBe(19);
+        expect(res.body.monthly.absentDays).toBe(2);
+      });
     });
   });
 

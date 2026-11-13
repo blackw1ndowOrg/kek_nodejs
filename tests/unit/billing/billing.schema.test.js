@@ -2,6 +2,7 @@ const {
   PAYMENT_PLANS,
   childParamsSchema,
   getChildBillingSchema,
+  getPriceTagSchema,
   payChildSchema,
 } = require('../../../src/modules/billing/billing.schema');
 
@@ -45,6 +46,27 @@ describe('getChildBillingSchema', () => {
 
   test('без params -> помилка', () => {
     expect(getChildBillingSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('getPriceTagSchema', () => {
+  test('валідні params, month необов’язковий', () => {
+    expect(getPriceTagSchema.parse({ params: { childId: '5' }, query: {} })).toEqual({
+      params: { childId: 5 },
+      query: {},
+    });
+    expect(
+      getPriceTagSchema.parse({ params: { childId: '5' }, query: { month: '2026-11' } }).query
+    ).toEqual({ month: '2026-11' });
+  });
+
+  test('невалідний month -> помилка українською', () => {
+    const result = getPriceTagSchema.safeParse({
+      params: { childId: '5' },
+      query: { month: 'bad' },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('month має бути у форматі YYYY-MM');
   });
 });
 

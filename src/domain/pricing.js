@@ -111,8 +111,7 @@ function calculateChildMonthlyTuition(
     if (typeof paymentPlan === 'number') {
       actualTuition = paymentPlan;
       actualDiscountLevels = Array.isArray(tuition) ? tuition : [10, 20, 30];
-      actualYearlyDiscountPercent =
-        typeof discountLevels === 'number' ? discountLevels : 12;
+      actualYearlyDiscountPercent = typeof discountLevels === 'number' ? discountLevels : 12;
     }
   }
 
@@ -123,9 +122,156 @@ function calculateChildMonthlyTuition(
   return baseMonthly;
 }
 
+/**
+ * Розрахунок детального цінника (Price Tag) для батьків:
+ * - навчання: базова ціна, пільга (відсоток і сума), річна знижка, підсумок
+ * - харчування: ставка за день за віком групи, дні, мінус дні відсутності, підсумок
+ * - порівняння двох планів (місяць і рік) поруч з економією
+ * Всі суми розраховуються в копійках.
+ */
+function calculatePriceTag({
+  groupAge,
+  discountPercent = 0,
+  tuition = 1500000,
+  discountLevels = [10, 20, 30],
+  yearlyDiscountPercent = 12,
+  basePerDay = 30000,
+  perExtraYear = 10000,
+  workingDays = 21,
+  absentDays = 0,
+  workingDaysPerYear = 252,
+}) {
+  assertAge(groupAge);
+  assertDiscount(discountPercent, discountLevels);
+  assertDays(workingDays);
+  assertDays(absentDays);
+  assertDays(workingDaysPerYear);
+
+  const billableMealDays = Math.max(0, workingDays - absentDays);
+
+  // 1. Навчання
+  const baseMonthlyTuition = tuition;
+  const monthlyTuitionAmount = tuitionMonthly(discountPercent, tuition, discountLevels);
+  const tuitionDiscountAmount = baseMonthlyTuition - monthlyTuitionAmount;
+  const tuitionDiscountUah = Number((tuitionDiscountAmount / 100).toFixed(2));
+
+  // Річне навчання: 12 місяців зі знижкою yearlyDiscountPercent
+  const yearlyTuitionAmount = applyPercentDiscount(
+    monthlyTuitionAmount * MONTHS_PER_YEAR,
+    yearlyDiscountPercent
+  );
+  const yearlyMonthlyEquivalent = calculateChildMonthlyTuition(
+    discountPercent,
+    'YEARLY',
+    tuition,
+    discountLevels,
+    yearlyDiscountPercent
+  );
+
+  // 2. Харчування (не знижується ні пільгою, ні річною знижкою)
+  const ratePerDay = mealPerDay(groupAge, basePerDay, perExtraYear);
+  const monthlyMealsTotal = ratePerDay * billableMealDays;
+  const yearlyMealsTotal = ratePerDay * workingDaysPerYear;
+
+  // 3. Плани
+  const monthlyPlan = {
+    tuition: monthlyTuitionAmount,
+    meals: monthlyMealsTotal,
+    total: monthlyTuitionAmount + monthlyMealsTotal,
+  };
+
+  const yearlyPlan = {
+    tuition: yearlyTuitionAmount,
+    meals: yearlyMealsTotal,
+    total: yearlyTuitionAmount + yearlyMealsTotal,
+  };
+
+  // Економія за рік (12 місяців за базовим помісячним розрахунком проти річного плану)
+  const fullYearMonthlyTotal = monthlyTuitionAmount * MONTHS_PER_YEAR + yearlyMealsTotal;
+  const savingsAmount = Math.max(0, fullYearMonthlyTotal - yearlyPlan.total);
+  const savingsUah = Number((savingsAmount / 100).toFixed(2));
+
+  return {
+    groupAge,
+    tuition: {
+      base: baseMonthlyTuition,
+      discountPercent,
+      discountAmount: tuitionDiscountAmount,
+      discountUah: tuitionDiscountUah,
+      yearlyDiscountPercent,
+      monthlyTuition: monthlyTuitionAmount,
+      yearlyTuition: yearlyTuitionAmount,
+      yearlyMonthlyEquivalent,
+    },
+    meals: {
+      groupAge,
+      ratePerDay,
+      workingDays,
+      absentDays,
+      billableDays: billableMealDays,
+      total: monthlyMealsTotal,
+      yearlyWorkingDays: workingDaysPerYear,
+      yearlyTotal: yearlyMealsTotal,
+    },
+    monthly: monthlyPlan,
+    yearly: yearlyPlan,
+    plans: {
+      monthly: {
+        tuition: {
+          base: baseMonthlyTuition,
+          discountPercent,
+          discountAmount: tuitionDiscountAmount,
+          discountUah: tuitionDiscountUah,
+          total: monthlyTuitionAmount,
+        },
+        meals: {
+          groupAge,
+          ratePerDay,
+          workingDays,
+          absentDays,
+          billableDays: billableMealDays,
+          total: monthlyMealsTotal,
+        },
+        total: monthlyPlan.total,
+      },
+      yearly: {
+        tuition: {
+          base: baseMonthlyTuition * MONTHS_PER_YEAR,
+          baseMonthly: baseMonthlyTuition,
+          discountPercent,
+          yearlyDiscountPercent,
+          monthlyEquivalent: yearlyMonthlyEquivalent,
+          total: yearlyTuitionAmount,
+        },
+        meals: {
+          groupAge,
+          ratePerDay,
+          workingDays: workingDaysPerYear,
+          absentDays: 0,
+          billableDays: workingDaysPerYear,
+          total: yearlyMealsTotal,
+        },
+        total: yearlyPlan.total,
+      },
+      savings: {
+        amount: savingsAmount,
+        amountUah: savingsUah,
+        percent: yearlyDiscountPercent,
+        description: `Економія ${yearlyDiscountPercent}% на оплаті навчання за рік`,
+      },
+    },
+    savings: {
+      amount: savingsAmount,
+      amountUah: savingsUah,
+      percent: yearlyDiscountPercent,
+    },
+  };
+}
+
 module.exports = {
   applyPercentDiscount,
   calculateChildMonthlyTuition,
+  calculatePriceTag,
   tuitionMonthly,
   mealPerDay,
   mealMonthly,

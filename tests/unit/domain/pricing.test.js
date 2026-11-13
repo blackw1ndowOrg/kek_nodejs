@@ -1,6 +1,7 @@
 const {
   applyPercentDiscount,
   calculateChildMonthlyTuition,
+  calculatePriceTag,
   tuitionMonthly,
   mealPerDay,
   mealMonthly,
@@ -156,5 +157,78 @@ describe('значення з налаштувань передаються па
   test('yearlyTotal: усі параметри доходять до складових', () => {
     // навчання 10 000 · 12 · 0,9 = 108 000 грн; харчування 300 · 200 = 60 000 грн
     expect(yearlyTotal(4, 0, 1000000, [10], 10, 20000, 5000, 200)).toBe(16800000);
+  });
+});
+
+describe('calculatePriceTag (цінник для батьків)', () => {
+  test('базовий розрахунок для 3-річної дитини з пільгою 30% (річне навчання: 15 000 × 0,7 × 0,88)', () => {
+    const result = calculatePriceTag({
+      groupAge: 3,
+      discountPercent: 30,
+      tuition: 1500000,
+      discountLevels: [10, 20, 30],
+      yearlyDiscountPercent: 12,
+      basePerDay: 30000,
+      perExtraYear: 10000,
+      workingDays: 21,
+      absentDays: 0,
+      workingDaysPerYear: 252,
+    });
+
+    // 1. Навчання
+    expect(result.tuition.base).toBe(1500000);
+    expect(result.tuition.discountPercent).toBe(30);
+    expect(result.tuition.discountAmount).toBe(450000);
+    expect(result.tuition.discountUah).toBe(4500);
+    expect(result.tuition.yearlyDiscountPercent).toBe(12);
+    expect(result.tuition.monthlyTuition).toBe(1050000); // 15 000 * 0.7 = 10 500 грн
+    // Річний план для навчання: 15 000 × 0,7 × 0,88 на місяць = 924 000 коп
+    expect(result.tuition.yearlyMonthlyEquivalent).toBe(924000);
+    expect(result.tuition.yearlyTuition).toBe(11088000); // 1050000 * 12 * 0.88 = 11 088 000 коп
+
+    // 2. Харчування (3 роки: 300 + 100 = 400 грн/день, НЕ знижується ні пільгою, ні знижкою року)
+    expect(result.meals.ratePerDay).toBe(40000);
+    expect(result.meals.workingDays).toBe(21);
+    expect(result.meals.absentDays).toBe(0);
+    expect(result.meals.billableDays).toBe(21);
+    expect(result.meals.total).toBe(840000); // 40 000 * 21 = 840 000 коп
+
+    // 3. Збіг з monthlyTotal та yearlyTotal
+    expect(result.monthly.total).toBe(monthlyTotal(3, 30, 1500000, [10, 20, 30], 30000, 10000, 21));
+    expect(result.yearly.total).toBe(
+      yearlyTotal(3, 30, 1500000, [10, 20, 30], 12, 30000, 10000, 252)
+    );
+
+    // 4. Економія при виборі річного плану
+    // 12 місяців за базовим помісячним розрахунком = 12 * 1050000 + 10080000 = 22680000
+    // Річний план = 11088000 + 10080000 = 21168000
+    // Економія = 1512000 коп = 15 120 грн
+    expect(result.savings.amount).toBe(1512000);
+    expect(result.savings.amountUah).toBe(15120);
+    expect(result.savings.percent).toBe(12);
+  });
+
+  test('харчування з відсутностями: дні відсутності віднімаються від робочих днів', () => {
+    const result = calculatePriceTag({
+      groupAge: 4, // 4 роки: 30 000 + 10 000 * 2 = 50 000 коп/день
+      discountPercent: 10,
+      absentDays: 3,
+      workingDays: 21,
+    });
+
+    expect(result.meals.ratePerDay).toBe(50000);
+    expect(result.meals.absentDays).toBe(3);
+    expect(result.meals.billableDays).toBe(18);
+    expect(result.meals.total).toBe(50000 * 18);
+    expect(result.monthly.meals).toBe(50000 * 18);
+    expect(result.monthly.total).toBe(result.tuition.monthlyTuition + 50000 * 18);
+    // Річні суми не залежать від місячних відсутностей
+    expect(result.yearly.meals).toBe(50000 * 252);
+  });
+
+  test('валідація аргументів: помилка при некоректних даних', () => {
+    expect(() => calculatePriceTag({ groupAge: 6 })).toThrow(BadRequestError);
+    expect(() => calculatePriceTag({ groupAge: 3, discountPercent: 15 })).toThrow(BadRequestError);
+    expect(() => calculatePriceTag({ groupAge: 3, absentDays: -1 })).toThrow(BadRequestError);
   });
 });

@@ -2,9 +2,15 @@ jest.mock('../../../src/domain/pricing', () => ({
   tuitionMonthly: jest.fn(),
   monthlyTotal: jest.fn(),
   yearlyTotal: jest.fn(),
+  calculatePriceTag: jest.fn(),
 }));
 
-const { tuitionMonthly, monthlyTotal, yearlyTotal } = require('../../../src/domain/pricing');
+const {
+  tuitionMonthly,
+  monthlyTotal,
+  yearlyTotal,
+  calculatePriceTag,
+} = require('../../../src/domain/pricing');
 const {
   BillingService,
   billingService,
@@ -32,6 +38,50 @@ const SETTINGS = Object.freeze({
 const TUITION = 270000;
 const MONTHLY_TOTAL = 350000;
 const YEARLY_TOTAL = 3780000;
+
+const MOCK_PRICE_TAG = Object.freeze({
+  groupAge: 3,
+  tuition: {
+    base: 300000,
+    discountPercent: 10,
+    discountAmount: 30000,
+    discountUah: 300,
+    yearlyDiscountPercent: 10,
+    monthlyTuition: TUITION,
+    yearlyTuition: 2916000,
+    yearlyMonthlyEquivalent: 243000,
+  },
+  meals: {
+    groupAge: 3,
+    ratePerDay: 5500,
+    workingDays: 21,
+    absentDays: 0,
+    billableDays: 21,
+    total: 115500,
+    yearlyWorkingDays: 252,
+    yearlyTotal: 1386000,
+  },
+  monthly: {
+    tuition: TUITION,
+    meals: 115500,
+    total: MONTHLY_TOTAL,
+  },
+  yearly: {
+    tuition: 2916000,
+    meals: 1386000,
+    total: YEARLY_TOTAL,
+  },
+  plans: {
+    monthly: { total: MONTHLY_TOTAL },
+    yearly: { total: YEARLY_TOTAL },
+    savings: { amount: 324000, percent: 10 },
+  },
+  savings: {
+    amount: 324000,
+    amountUah: 3240,
+    percent: 10,
+  },
+});
 
 const CHILD = Object.freeze({
   id: 5,
@@ -61,6 +111,7 @@ beforeEach(() => {
   tuitionMonthly.mockReturnValue(TUITION);
   monthlyTotal.mockReturnValue(MONTHLY_TOTAL);
   yearlyTotal.mockReturnValue(YEARLY_TOTAL);
+  calculatePriceTag.mockReturnValue(MOCK_PRICE_TAG);
 });
 
 afterEach(() => {
@@ -397,6 +448,75 @@ describe('BillingService', () => {
     ])('%s може оплатити за будь-яку дитину', async (_r, user) => {
       const { service } = createService();
       await expect(service.payForChild(user, 5, 'MONTHLY', NOW)).resolves.toMatchObject({
+        childId: 5,
+      });
+    });
+  });
+
+  describe('getPriceTag', () => {
+    test('повертає розклад цінника: total збігається з amountDue для MONTHLY', async () => {
+      const { service } = createService();
+      const result = await service.getPriceTag(PARENT, 5, NOW, '2026-10');
+
+      expect(result).toMatchObject({
+        childId: 5,
+        fullName: 'Іван Петренко',
+        groupAge: 3,
+        discountPercent: 10,
+        paymentPlan: 'MONTHLY',
+        currency: 'UAH',
+        total: MONTHLY_TOTAL,
+        amountDue: MONTHLY_TOTAL,
+        paidUntil: null,
+        isPaid: false,
+        monthly: {
+          month: '2026-10',
+          total: MONTHLY_TOTAL,
+        },
+        yearly: {
+          total: YEARLY_TOTAL,
+        },
+      });
+      expect(result).not.toHaveProperty('hasDeputyRelatives');
+      expect(calculatePriceTag).toHaveBeenCalledWith({
+        groupAge: 3,
+        discountPercent: 10,
+        tuition: SETTINGS.TUITION_MONTHLY,
+        discountLevels: SETTINGS.DISCOUNT_LEVELS,
+        yearlyDiscountPercent: SETTINGS.YEARLY_DISCOUNT_PERCENT,
+        basePerDay: SETTINGS.MEAL_BASE_PER_DAY,
+        perExtraYear: SETTINGS.MEAL_PER_EXTRA_YEAR,
+        workingDays: 21,
+        absentDays: 0,
+      });
+    });
+
+    test('для плану YEARLY total цінника збігається з річною сумою (yearly.total)', async () => {
+      const { service } = createService({ ...CHILD, paymentPlan: 'YEARLY' });
+      const result = await service.getPriceTag(PARENT, 5, NOW, '2026-10');
+
+      expect(result.total).toBe(YEARLY_TOTAL);
+      expect(result.amountDue).toBe(YEARLY_TOTAL);
+    });
+
+    test('дитина без групи -> 400 BadRequestError', async () => {
+      const { service } = createService({ ...CHILD, group: null });
+      await expect(service.getPriceTag(PARENT, 5, NOW, '2026-10')).rejects.toThrow(BadRequestError);
+    });
+
+    test('чужа дитина для PARENT -> 404 NotFoundError', async () => {
+      const { service } = createService();
+      await expect(service.getPriceTag(OTHER_PARENT, 5, NOW, '2026-10')).rejects.toThrow(
+        NotFoundError
+      );
+    });
+
+    test.each([
+      ['ADMIN', ADMIN],
+      ['MANAGER', MANAGER],
+    ])('%s має доступ до цінника будь-якої дитини', async (_r, user) => {
+      const { service } = createService();
+      await expect(service.getPriceTag(user, 5, NOW, '2026-10')).resolves.toMatchObject({
         childId: 5,
       });
     });

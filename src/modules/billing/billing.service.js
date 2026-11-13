@@ -1,5 +1,10 @@
 const { BadRequestError, ConflictError, NotFoundError } = require('../../errors/AppError');
-const { tuitionMonthly, monthlyTotal, yearlyTotal } = require('../../domain/pricing');
+const {
+  tuitionMonthly,
+  monthlyTotal,
+  yearlyTotal,
+  calculatePriceTag,
+} = require('../../domain/pricing');
 const { settingsService } = require('../settings/settings.service');
 const { billingRepository } = require('./billing.repository');
 const { startOfUtcDay, addMonthsUtc, toIsoDate } = require('./billing.dates');
@@ -115,6 +120,70 @@ class BillingService {
       amountDue: this.amountFor(child.paymentPlan, bill),
       paidUntil: toIsoDate(child.paidUntil),
       isPaid: Boolean(child.paidUntil) && child.paidUntil >= today,
+    };
+  }
+
+  /**
+   * Розклад цінника (Price Tag) дитини:
+   * розклад навчання, розклад харчування з відсутностями, два плани поруч та економія
+   */
+  async getPriceTag(user, childId, now = new Date(), month = localMonth(now)) {
+    const child = await this.loadAccessibleChild(user, childId);
+    if (!child.group) {
+      throw new BadRequestError(
+        'Child is not assigned to a group: meal price depends on the group age'
+      );
+    }
+    const groupAge = child.group.age;
+    const discount = child.discountPercent;
+    const tuition = this.settings.get('TUITION_MONTHLY');
+    const levels = this.settings.get('DISCOUNT_LEVELS');
+    const basePerDay = this.settings.get('MEAL_BASE_PER_DAY');
+    const perExtraYear = this.settings.get('MEAL_PER_EXTRA_YEAR');
+    const yearlyDiscount = this.settings.get('YEARLY_DISCOUNT_PERCENT');
+
+    const absentDays = await this.countedAbsences(child.id, month);
+
+    const priceTag = calculatePriceTag({
+      groupAge,
+      discountPercent: discount,
+      tuition,
+      discountLevels: levels,
+      yearlyDiscountPercent: yearlyDiscount,
+      basePerDay,
+      perExtraYear,
+      workingDays: WORKING_DAYS_PER_MONTH,
+      absentDays,
+    });
+
+    const today = startOfUtcDay(now);
+    const total = this.amountFor(child.paymentPlan, priceTag);
+
+    return {
+      childId: child.id,
+      fullName: child.fullName,
+      groupAge,
+      discountPercent: child.discountPercent,
+      paymentPlan: child.paymentPlan,
+      currency: CURRENCY,
+      paidUntil: toIsoDate(child.paidUntil),
+      isPaid: Boolean(child.paidUntil) && child.paidUntil >= today,
+      total,
+      amountDue: total,
+      monthly: {
+        ...priceTag.monthly,
+        month,
+        mealDays: priceTag.meals.billableDays,
+        absentDays,
+      },
+      yearly: priceTag.yearly,
+      tuition: priceTag.tuition,
+      meals: {
+        ...priceTag.meals,
+        month,
+      },
+      plans: priceTag.plans,
+      savings: priceTag.savings,
     };
   }
 
