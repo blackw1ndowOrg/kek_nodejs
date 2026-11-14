@@ -23,4 +23,12 @@ const payChildSchema = z.object({
     .optional(),
 });
 
-module.exports = { PAYMENT_PLANS, childParamsSchema, getChildBillingSchema, payChildSchema };
+const getPriceTagSchema = getChildBillingSchema;
+
+module.exports = {
+  PAYMENT_PLANS,
+  childParamsSchema,
+  getChildBillingSchema,
+  getPriceTagSchema,
+  payChildSchema,
+};

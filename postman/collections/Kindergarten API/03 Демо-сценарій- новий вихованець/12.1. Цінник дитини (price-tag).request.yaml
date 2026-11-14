@@ -1,0 +1,35 @@
+$kind: http-request
+url: '{{baseUrl}}/billing/children/{{demoChildId}}/price-tag'
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: '{{demoParentToken}}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Статус 200', () => pm.response.to.have.status(200));
+      const priceTag = pm.response.json();
+      pm.test('total = amountDue', () => {
+        pm.expect(priceTag.total).to.eql(2040000);
+        pm.expect(priceTag.total).to.eql(priceTag.amountDue);
+      });
+      pm.test('Навчання: базова ціна 15 000 грн, пільга 20% (3 000 грн), підсумок 12 000 грн', () => {
+        pm.expect(priceTag.tuition.base).to.eql(1500000);
+        pm.expect(priceTag.tuition.discountPercent).to.eql(20);
+        pm.expect(priceTag.tuition.discountAmount).to.eql(300000);
+        pm.expect(priceTag.tuition.monthlyTuition).to.eql(1200000);
+      });
+      pm.test('Харчування: 400 грн · 21 день = 8 400 грн (без знижок)', () => {
+        pm.expect(priceTag.meals.ratePerDay).to.eql(40000);
+        pm.expect(priceTag.meals.workingDays).to.eql(21);
+        pm.expect(priceTag.meals.absentDays).to.eql(0);
+        pm.expect(priceTag.meals.total).to.eql(840000);
+      });
+      pm.test('Два плани поруч (місяць і рік) з економією', () => {
+        pm.expect(priceTag.plans.monthly.total).to.eql(2040000);
+        pm.expect(priceTag.plans.yearly.total).to.eql(22752000);
+        pm.expect(priceTag.plans.savings.amount).to.eql(1728000);
+      });
+    language: text/javascript
+order: 12500
