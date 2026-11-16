@@ -63,8 +63,10 @@ describe('Settings API (Supertest)', () => {
         TUITION_MONTHLY: 1500000,
         MAX_GROUPS: 30,
         DISCOUNT_LEVELS: [10, 20, 30],
+        WORKING_DAYS_PER_MONTH: 21,
+        ATTENDANCE_RATE_PERCENT: 80,
       });
-      expect(Object.keys(res.body.settings)).toHaveLength(16);
+      expect(Object.keys(res.body.settings)).toHaveLength(18);
     });
   });
 
@@ -123,6 +125,9 @@ describe('Settings API (Supertest)', () => {
       ['значення рядком', 'TUITION_MONTHLY', { value: '100' }],
       ['без value', 'TUITION_MONTHLY', {}],
       ['зайве поле', 'TUITION_MONTHLY', { value: 100, extra: 1 }],
+      ['відвідуваність більша за 100', 'ATTENDANCE_RATE_PERCENT', { value: 101 }],
+      ['робочих днів 0', 'WORKING_DAYS_PER_MONTH', { value: 0 }],
+      ['робочих днів більше 31', 'WORKING_DAYS_PER_MONTH', { value: 32 }],
     ])('%s -> 400', async (_name, key, body) => {
       const res = await request(app)
         [method](`${BASE}/${key}`)

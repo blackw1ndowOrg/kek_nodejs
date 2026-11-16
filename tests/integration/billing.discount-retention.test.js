@@ -25,6 +25,7 @@ describe('Discount Retention Integration Scenarios (Billing & Analytics)', () =>
       if (key === 'MEAL_BASE_PER_DAY') return 30000;
       if (key === 'MEAL_PER_EXTRA_YEAR') return 10000;
       if (key === 'YEARLY_DISCOUNT_PERCENT') return 12;
+      if (key === 'WORKING_DAYS_PER_MONTH') return 21;
       return null;
     });
 
@@ -62,6 +63,8 @@ describe('Discount Retention Integration Scenarios (Billing & Analytics)', () =>
       if (key === 'MEAL_BASE_PER_DAY') return 30000;
       if (key === 'MEAL_PER_EXTRA_YEAR') return 10000;
       if (key === 'YEARLY_DISCOUNT_PERCENT') return 12;
+      if (key === 'WORKING_DAYS_PER_MONTH') return 21;
+      if (key === 'ATTENDANCE_RATE_PERCENT') return 80;
       if (key === 'EDUCATOR_PER_CHILD') return 200000;
       if (key === 'EDUCATOR_EXTRA_PAY') return 300000;
       if (key === 'ASSISTANT_SALARY') return 2000000;
@@ -100,6 +103,8 @@ describe('Discount Retention Integration Scenarios (Billing & Analytics)', () =>
       if (key === 'MEAL_BASE_PER_DAY') return 30000;
       if (key === 'MEAL_PER_EXTRA_YEAR') return 10000;
       if (key === 'YEARLY_DISCOUNT_PERCENT') return 12;
+      if (key === 'WORKING_DAYS_PER_MONTH') return 21;
+      if (key === 'ATTENDANCE_RATE_PERCENT') return 80;
       if (key === 'EDUCATOR_PER_CHILD') return 200000;
       if (key === 'EDUCATOR_EXTRA_PAY') return 300000;
       if (key === 'ASSISTANT_SALARY') return 2000000;

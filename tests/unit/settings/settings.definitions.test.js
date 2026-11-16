@@ -28,7 +28,7 @@ describe('toConstantCase', () => {
 describe('SETTING_DEFINITIONS, SETTING_KEYS, DEFINITIONS_BY_CONSTANT', () => {
   test('SETTING_KEYS збігається з ключами визначень', () => {
     expect(SETTING_KEYS).toEqual(Object.keys(SETTING_DEFINITIONS));
-    expect(SETTING_KEYS).toHaveLength(16);
+    expect(SETTING_KEYS).toHaveLength(18);
   });
 
   test('усе заморожено', () => {
@@ -73,6 +73,8 @@ const RULES = {
   defaultRoomsCount: COUNT_MIN_1,
   maxChildrenInGroup: COUNT_MIN_1,
   maxGroups: COUNT_MIN_1,
+  workingDaysPerMonth: { valid: [1, 21, 31], invalid: [0, -1, 32, 1.5, '21'] },
+  attendanceRatePercent: { valid: [0, 80, 100], invalid: [-1, 101, 1.5, '80'] },
   groupExtraPayThreshold: COUNT_MIN_0,
   educatorPerChild: MONEY_MIN_1,
   educatorExtraPay: MONEY_MIN_0,

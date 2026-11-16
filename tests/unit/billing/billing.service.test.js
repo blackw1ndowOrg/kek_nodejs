@@ -33,6 +33,7 @@ const SETTINGS = Object.freeze({
   MEAL_BASE_PER_DAY: 5000,
   MEAL_PER_EXTRA_YEAR: 500,
   YEARLY_DISCOUNT_PERCENT: 10,
+  WORKING_DAYS_PER_MONTH: 21,
 });
 
 const TUITION = 270000;
@@ -202,6 +203,25 @@ describe('BillingService', () => {
     });
   });
 
+  describe('calculate: дні харчування за замовчуванням', () => {
+    test('беруться з налаштування WORKING_DAYS_PER_MONTH', () => {
+      const { settings, service } = createService();
+      settings.get.mockImplementation((key) =>
+        key === 'WORKING_DAYS_PER_MONTH' ? 22 : SETTINGS[key]
+      );
+      service.calculate(CHILD);
+      expect(monthlyTotal).toHaveBeenLastCalledWith(
+        3,
+        10,
+        300000,
+        SETTINGS.DISCOUNT_LEVELS,
+        5000,
+        500,
+        22
+      );
+    });
+  });
+
   describe('amountFor', () => {
     const bill = { monthly: { total: 100 }, yearly: { total: 1000 } };
 
@@ -311,6 +331,28 @@ describe('BillingService', () => {
         expect(result.monthly).toMatchObject({ mealDays: 21, absentDays: 0 });
       });
 
+      test('робочі дні беруться з налаштувань: 22 дні мінус 2 відсутності -> 20', async () => {
+        const { repository, settings, service } = createService();
+        settings.get.mockImplementation((key) =>
+          key === 'WORKING_DAYS_PER_MONTH' ? 22 : SETTINGS[key]
+        );
+        repository.findAbsences.mockResolvedValueOnce([
+          absence('2026-10-14', '2026-10-13T18:00:00Z'),
+          absence('2026-10-15', '2026-10-15T08:29:59+03:00'),
+        ]);
+        const result = await service.getChildBilling(PARENT, 5, NOW);
+        expect(result.monthly).toMatchObject({ mealDays: 20, absentDays: 2 });
+      });
+
+      test('відсутностей більше за робочі дні -> дні харчування не менше 0', async () => {
+        const { repository, service } = createService();
+        repository.findAbsences.mockResolvedValueOnce(
+          Array.from({ length: 25 }, () => absence('2026-10-14', '2026-10-13T18:00:00Z'))
+        );
+        const result = await service.getChildBilling(PARENT, 5, NOW);
+        expect(result.monthly).toMatchObject({ mealDays: 0, absentDays: 25 });
+      });
+
       test('конкретний місяць', async () => {
         const { repository, service } = createService();
         const result = await service.getChildBilling(ADMIN, 5, NOW, '2026-09');
@@ -357,6 +399,61 @@ describe('BillingService', () => {
         5,
         null,
         new Date('2026-11-26T00:00:00Z')
+      );
+    });
+
+    test('місячна оплата рахується за дні харчування мінус зараховані відсутності, як у GET', async () => {
+      const { repository, service } = createService();
+      repository.findAbsences.mockResolvedValueOnce([
+        { date: new Date('2026-10-14T00:00:00Z'), notifiedAt: new Date('2026-10-13T18:00:00Z') },
+        { date: new Date('2026-10-15T00:00:00Z'), notifiedAt: new Date('2026-10-15T05:29:59Z') },
+      ]);
+      await service.payForChild(PARENT, 5, 'MONTHLY', NOW);
+
+      expect(repository.findAbsences).toHaveBeenCalledWith(5, {
+        from: new Date('2026-10-01T00:00:00Z'),
+        to: new Date('2026-11-01T00:00:00Z'),
+      });
+      expect(monthlyTotal).toHaveBeenLastCalledWith(
+        3,
+        10,
+        300000,
+        SETTINGS.DISCOUNT_LEVELS,
+        5000,
+        500,
+        19
+      );
+    });
+
+    test('відсутності, повідомлені о 08:30 чи пізніше, у місячній оплаті не віднімаються', async () => {
+      const { repository, service } = createService();
+      repository.findAbsences.mockResolvedValueOnce([
+        { date: new Date('2026-10-15T00:00:00Z'), notifiedAt: new Date('2026-10-15T05:30:00Z') },
+      ]);
+      await service.payForChild(PARENT, 5, 'MONTHLY', NOW);
+      expect(monthlyTotal).toHaveBeenLastCalledWith(
+        3,
+        10,
+        300000,
+        SETTINGS.DISCOUNT_LEVELS,
+        5000,
+        500,
+        21
+      );
+    });
+
+    test('річна оплата відсутностей не враховує і не запитує їх у базі', async () => {
+      const { repository, service } = createService();
+      await service.payForChild(PARENT, 5, 'YEARLY', NOW);
+      expect(repository.findAbsences).not.toHaveBeenCalled();
+      expect(monthlyTotal).toHaveBeenLastCalledWith(
+        3,
+        10,
+        300000,
+        SETTINGS.DISCOUNT_LEVELS,
+        5000,
+        500,
+        21
       );
     });
 
@@ -489,6 +586,17 @@ describe('BillingService', () => {
         workingDays: 21,
         absentDays: 0,
       });
+    });
+
+    test('робочі дні для цінника беруться з налаштувань', async () => {
+      const { settings, service } = createService();
+      settings.get.mockImplementation((key) =>
+        key === 'WORKING_DAYS_PER_MONTH' ? 22 : SETTINGS[key]
+      );
+      await service.getPriceTag(PARENT, 5, NOW, '2026-10');
+      expect(calculatePriceTag).toHaveBeenCalledWith(
+        expect.objectContaining({ workingDays: 22, absentDays: 0 })
+      );
     });
 
     test('для плану YEARLY total цінника збігається з річною сумою (yearly.total)', async () => {

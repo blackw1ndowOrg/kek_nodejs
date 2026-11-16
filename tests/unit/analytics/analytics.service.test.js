@@ -29,6 +29,8 @@ describe('AnalyticsService', () => {
     DEFAULT_ROOMS_COUNT: 20,
     MAX_CHILDREN_IN_GROUP: 20,
     YEARLY_DISCOUNT_PERCENT: 12,
+    WORKING_DAYS_PER_MONTH: 21,
+    ATTENDANCE_RATE_PERCENT: 80,
   };
 
   beforeEach(() => {
@@ -386,6 +388,35 @@ describe('AnalyticsService', () => {
       expect(resFull.profit.uah).toBe(-28700);
     });
 
+    test('робочі дні і відвідуваність за замовчуванням беруться з налаштувань, query їх перекриває', async () => {
+      mockSettings.get.mockImplementation((key) => {
+        if (key === 'WORKING_DAYS_PER_MONTH') return 20;
+        if (key === 'ATTENDANCE_RATE_PERCENT') return 50;
+        return DEFAULT_SETTINGS[key];
+      });
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 4,
+        name: 'Чомусики',
+        age: 3,
+        roomId: 7,
+        educatorId: 1,
+        assistantId: 2,
+        room: { id: 7, name: 'Кімната 7', monthlyCost: 5000000 },
+        children: [
+          { id: 1, discountPercent: 0 },
+          { id: 2, discountPercent: 0 },
+        ],
+      });
+
+      // 3-річки: 400 грн/день × 20 днів × 0,5 = 4 000 грн на дитину × 2 = 8 000 грн
+      const res = await service.getGroupProfit(4);
+      expect(res.mealIncome.uah).toBe(8000);
+
+      // query-параметр перекриває налаштування: 400 × 20 × 1 × 2 = 16 000 грн
+      const resFull = await service.getGroupProfit(4, { attendanceRate: 1 });
+      expect(resFull.mealIncome.uah).toBe(16000);
+    });
+
     test('враховує річну знижку 12% для дітей з paymentPlan: YEARLY', async () => {
       // 1 дитина без пільги, MONTHLY: 15 000 грн (1 500 000 коп)
       // 1 дитина без пільги, YEARLY: 15 000 * 0.88 = 13 200 грн (1 320 000 коп)
@@ -588,6 +619,34 @@ describe('AnalyticsService', () => {
       // Разом навчання: 25 080 грн (2 508 000 коп)
       expect(res.income.tuition.uah).toBe(25080);
       expect(res.income.tuition.kopiykas).toBe(2508000);
+    });
+
+    test('робочі дні і відвідуваність за замовчуванням беруться з налаштувань, query їх перекриває', async () => {
+      mockSettings.get.mockImplementation((key) => {
+        if (key === 'WORKING_DAYS_PER_MONTH') return 20;
+        if (key === 'ATTENDANCE_RATE_PERCENT') return 50;
+        return DEFAULT_SETTINGS[key];
+      });
+      mockRepo.findAllActiveChildren.mockResolvedValue([]);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
+        {
+          id: 1,
+          name: 'Чомусики',
+          age: 3,
+          room: { id: 1, monthlyCost: 5000000 },
+          children: [
+            { id: 1, discountPercent: 0 },
+            { id: 2, discountPercent: 0 },
+          ],
+        },
+      ]);
+
+      // 3-річки: 400 грн/день × 20 днів × 0,5 × 2 дитини = 8 000 грн
+      const res = await service.getTotalProfit();
+      expect(res.income.meal.uah).toBe(8000);
+
+      const resFull = await service.getTotalProfit({ attendanceRate: 1 });
+      expect(resFull.income.meal.uah).toBe(16000);
     });
 
     test('getTotalProfit використовує defaultRoomCost якщо кімната в групі не задана', async () => {
@@ -971,6 +1030,23 @@ describe('AnalyticsService', () => {
 
       expect(res.recommended).toBeDefined();
       expect(res.recommended.totalAdmitted).toBe(24);
+    });
+
+    test('без attendanceRate у запиті береться відвідуваність з налаштувань', async () => {
+      mockSettings.get.mockImplementation((key) =>
+        key === 'ATTENDANCE_RATE_PERCENT' ? 100 : DEFAULT_SETTINGS[key]
+      );
+      const fromSettings = await service.calculateOptimalForecast({ targetChildrenCount: 24 });
+
+      const explicit = new AnalyticsService(mockRepo, {
+        get: jest.fn((key) => DEFAULT_SETTINGS[key]),
+      });
+      const withQuery = await explicit.calculateOptimalForecast({
+        targetChildrenCount: 24,
+        attendanceRate: 1,
+      });
+
+      expect(fromSettings.recommended.netProfit).toEqual(withQuery.recommended.netProfit);
     });
 
     test('успішно виконується без аргументів із дефолтним попитом', async () => {
