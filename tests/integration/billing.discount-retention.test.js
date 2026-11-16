@@ -15,6 +15,7 @@ describe('Discount Retention Integration Scenarios (Billing & Analytics)', () =>
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.spyOn(billingRepository, 'findAbsences').mockResolvedValue([]);
   });
 
   test('GET /billing/children/:id -> 200 та 10 500 грн за навчання для дитини зі збереженими 30% знижки після зміни discountLevels на [10, 20]', async () => {

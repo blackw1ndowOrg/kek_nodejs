@@ -239,7 +239,8 @@ describe('calculatePriceTag (цінник для батьків)', () => {
 
   test('валідація аргументів: помилка при некоректних даних', () => {
     expect(() => calculatePriceTag({ groupAge: 6 })).toThrow(BadRequestError);
-    expect(() => calculatePriceTag({ groupAge: 3, discountPercent: 15 })).toThrow(BadRequestError);
+    expect(() => calculatePriceTag({ groupAge: 3, discountPercent: -5 })).toThrow(BadRequestError);
+    expect(() => calculatePriceTag({ groupAge: 3, discountPercent: 105 })).toThrow(BadRequestError);
     expect(() => calculatePriceTag({ groupAge: 3, absentDays: -1 })).toThrow(BadRequestError);
   });
 });
