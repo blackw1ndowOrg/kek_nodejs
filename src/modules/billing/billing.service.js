@@ -8,13 +8,7 @@ const {
 const { settingsService } = require('../settings/settings.service');
 const { billingRepository } = require('./billing.repository');
 const { startOfUtcDay, addMonthsUtc, toIsoDate } = require('./billing.dates');
-const {
-  WORKING_DAYS_PER_MONTH,
-  isCounted,
-  localMonth,
-  mealDays,
-  monthRange,
-} = require('../../domain/absence');
+const { isCounted, localMonth, monthRange } = require('../../domain/absence');
 
 const CURRENCY = 'UAH'; // All amounts are stored in kopiykas
 const MONTHS_BY_PLAN = Object.freeze({ MONTHLY: 1, YEARLY: 12 });
@@ -38,10 +32,10 @@ class BillingService {
   /** Prices come from the settings cache; meals are charged by the age of the child's group, not the child's own age */
   /**
    * @param {object} child
-   * @param {number} days днів харчування за місяць: 21 мінус зараховані відсутності.
-   *   Річна сума їх не враховує: відсутності наперед невідомі
+   * @param {number} days днів харчування за місяць: робочі дні з налаштувань мінус зараховані
+   *   відсутності. Річна сума їх не враховує: відсутності наперед невідомі
    */
-  calculate(child, days = WORKING_DAYS_PER_MONTH) {
+  calculate(child, days = this.workingDays()) {
     if (!child.group) {
       throw new BadRequestError(
         'Child is not assigned to a group: meal price depends on the group age'
@@ -90,6 +84,20 @@ class BillingService {
     return plan === 'YEARLY' ? bill.yearly.total : bill.monthly.total;
   }
 
+  /** Робочих днів на місяць з налаштувань (за замовчуванням 21) */
+  workingDays() {
+    return this.settings.get('WORKING_DAYS_PER_MONTH');
+  }
+
+  /**
+   * Дні харчування за місяць 'YYYY-MM': робочі дні мінус зараховані відсутності (не менше 0).
+   * Єдине місце розрахунку: його використовують і GET, і оплата, щоб суми збігались
+   */
+  async mealDaysFor(childId, month) {
+    const absentDays = await this.countedAbsences(childId, month);
+    return { absentDays, days: Math.max(0, this.workingDays() - absentDays) };
+  }
+
   /** Зараховані відсутності дитини за місяць 'YYYY-MM' (повідомлені до 08:30 дня відсутності) */
   async countedAbsences(childId, month) {
     const absences = await this.repository.findAbsences(childId, monthRange(month));
@@ -103,8 +111,7 @@ class BillingService {
    */
   async getChildBilling(user, childId, now = new Date(), month = localMonth(now)) {
     const child = await this.loadAccessibleChild(user, childId);
-    const absentDays = await this.countedAbsences(child.id, month);
-    const days = mealDays(absentDays);
+    const { absentDays, days } = await this.mealDaysFor(child.id, month);
     const bill = this.calculate(child, days);
     const today = startOfUtcDay(now);
 
@@ -152,7 +159,7 @@ class BillingService {
       yearlyDiscountPercent: yearlyDiscount,
       basePerDay,
       perExtraYear,
-      workingDays: WORKING_DAYS_PER_MONTH,
+      workingDays: this.workingDays(),
       absentDays,
     });
 
@@ -195,7 +202,13 @@ class BillingService {
     }
 
     const chosenPlan = plan ?? child.paymentPlan;
-    const amount = this.amountFor(chosenPlan, this.calculate(child));
+    // Місячна оплата рахується так само, як amountDue у GET: з урахуванням відсутностей поточного
+    // місяця. Річна відсутностей не враховує, тому зайвий запит до бази не потрібен
+    const days =
+      chosenPlan === 'MONTHLY'
+        ? (await this.mealDaysFor(child.id, localMonth(now))).days
+        : this.workingDays();
+    const amount = this.amountFor(chosenPlan, this.calculate(child, days));
 
     const today = startOfUtcDay(now);
     const base = child.paidUntil && child.paidUntil > today ? child.paidUntil : today;

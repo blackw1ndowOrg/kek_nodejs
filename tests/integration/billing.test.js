@@ -38,6 +38,7 @@ const SETTINGS = {
   MEAL_BASE_PER_DAY: 5000,
   MEAL_PER_EXTRA_YEAR: 500,
   YEARLY_DISCOUNT_PERCENT: 10,
+  WORKING_DAYS_PER_MONTH: 21,
 };
 
 const CHILD = {
@@ -361,6 +362,24 @@ describe('Billing API (Supertest)', () => {
         currency: 'UAH',
       });
       expect(billingRepository.updatePaidUntil).toHaveBeenCalledWith(5, null, expect.any(Date));
+    });
+
+    test('місячна оплата враховує зараховані відсутності: дні харчування як у GET', async () => {
+      billingRepository.findAbsences.mockResolvedValueOnce([
+        { date: new Date('2026-10-14T00:00:00Z'), notifiedAt: new Date('2026-10-13T18:00:00Z') },
+      ]);
+      const res = await request(app).post(url).set('Authorization', tokenFor('PARENT'));
+      expect(res.status).toBe(StatusCodes.CREATED);
+      expect(monthlyTotal).toHaveBeenLastCalledWith(3, 10, 300000, [0, 10, 20], 5000, 500, 20);
+    });
+
+    test('plan YEARLY: відсутності не враховуються і не запитуються', async () => {
+      const res = await request(app)
+        .post(url)
+        .set('Authorization', tokenFor('PARENT'))
+        .send({ plan: 'YEARLY' });
+      expect(res.status).toBe(StatusCodes.CREATED);
+      expect(billingRepository.findAbsences).not.toHaveBeenCalled();
     });
 
     test('plan YEARLY: річна сума', async () => {

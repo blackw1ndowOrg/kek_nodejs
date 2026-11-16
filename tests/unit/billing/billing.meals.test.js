@@ -9,6 +9,7 @@ const SETTINGS = Object.freeze({
   MEAL_BASE_PER_DAY: 30000,
   MEAL_PER_EXTRA_YEAR: 10000,
   YEARLY_DISCOUNT_PERCENT: 12,
+  WORKING_DAYS_PER_MONTH: 21,
 });
 
 const PARENT = { id: 9, role: 'PARENT' };
