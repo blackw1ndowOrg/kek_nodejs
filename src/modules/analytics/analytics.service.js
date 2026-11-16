@@ -15,7 +15,6 @@ const DEFAULT_CLUB_TEACHERS_COUNT = 5;
 const DEFAULT_MANAGERS_COUNT = 1;
 const DEFAULT_TOTAL_ROOMS_COUNT = 20;
 const DEFAULT_CLUB_ROOMS_COUNT = 5;
-const DEFAULT_WORKING_DAYS = 21;
 
 function isStaffActive(staffRelation, staffId) {
   if (staffId === null || staffRelation === null) {
@@ -33,6 +32,17 @@ class AnalyticsService {
   constructor(repository = analyticsRepository, settings = settingsService) {
     this.repository = repository;
     this.settings = settings;
+  }
+
+  /**
+   * Коефіцієнт відвідуваності: query-параметр перекриває налаштування.
+   * В налаштуваннях зберігається цілий відсоток (80), тут перетворюється на 0.8
+   */
+  resolveAttendanceRate(query = {}) {
+    if (query.attendanceRate !== undefined) {
+      return Number(query.attendanceRate);
+    }
+    return this.settings.get('ATTENDANCE_RATE_PERCENT') / 100;
   }
 
   /**
@@ -55,7 +65,7 @@ class AnalyticsService {
       throw new NotFoundError('Групу не знайдено');
     }
 
-    const attendanceRate = query.attendanceRate !== undefined ? Number(query.attendanceRate) : 0.8;
+    const attendanceRate = this.resolveAttendanceRate(query);
     const tuition = this.settings.get('TUITION_MONTHLY');
     const discountLevels = this.settings.get('DISCOUNT_LEVELS');
     const yearlyDiscountPercent = this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12;
@@ -67,7 +77,7 @@ class AnalyticsService {
     const defaultRoomCost = this.settings.get('ROOM_MONTHLY_COST');
     const mealBase = this.settings.get('MEAL_BASE_PER_DAY');
     const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
-    const workingDays = DEFAULT_WORKING_DAYS;
+    const workingDays = this.settings.get('WORKING_DAYS_PER_MONTH');
 
     const activeChildren = group.children || [];
     const childrenCount = group._count?.children ?? activeChildren.length;
@@ -148,7 +158,7 @@ class AnalyticsService {
    * @param {Object} [query={}]
    */
   async getTotalProfit(query = {}) {
-    const attendanceRate = query.attendanceRate !== undefined ? Number(query.attendanceRate) : 0.8;
+    const attendanceRate = this.resolveAttendanceRate(query);
     const tuition = this.settings.get('TUITION_MONTHLY');
     const discountLevels = this.settings.get('DISCOUNT_LEVELS');
     const yearlyDiscountPercent = this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12;
@@ -163,7 +173,7 @@ class AnalyticsService {
     const roomsCountSetting = this.settings.get('DEFAULT_ROOMS_COUNT');
     const mealBase = this.settings.get('MEAL_BASE_PER_DAY');
     const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
-    const workingDays = DEFAULT_WORKING_DAYS;
+    const workingDays = this.settings.get('WORKING_DAYS_PER_MONTH');
     const defaultRoomCost = roomCostSetting;
     const roomsCount = roomsCountSetting;
 
@@ -346,7 +356,7 @@ class AnalyticsService {
    * - Оптимізує заповнення груп з урахуванням порогу 12 дітей (доплати вихователям і помічникам);
    * - Враховує вартість кожної задіяної кімнати (50 000 грн/міс);
    * - Враховує 5 окремих кабінетів для гуртків;
-   * - Враховує 8-годинний робочий день викладачів гуртків (40 занять/тиждень, до 13 груп на 5 викладачів);
+   * - Враховує 8-годинний робочий день викладачів гуртків (45 занять/тиждень, до 15 груп на 5 викладачів);
    * - Враховує диференційований дохід від харчування за віком (2 р. - 300 грн, 3 р. - 400 грн, 4 р. - 500 грн, 5 р. - 600 грн на день);
    * - Відсікає нерентабельні залишки дітей (waitlist), якщо вони створюють надлишкові витрати на відкриття кімнати;
    * - Повертає 3 секції:
@@ -371,7 +381,7 @@ class AnalyticsService {
       maxChildrenInGroup: this.settings.get('MAX_CHILDREN_IN_GROUP'),
       mealBasePerDay: this.settings.get('MEAL_BASE_PER_DAY'),
       mealPerExtraYear: this.settings.get('MEAL_PER_EXTRA_YEAR'),
-      attendanceRate: demand.attendanceRate,
+      attendanceRate: demand.attendanceRate ?? this.settings.get('ATTENDANCE_RATE_PERCENT') / 100,
     };
 
     const rawResult = optimizeKindergartenCapacity(demand, options);

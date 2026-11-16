@@ -5,6 +5,7 @@ const MAX_MONEY = 1_000_000_000;
 const MAX_PERCENT = 100;
 const MAX_COUNT = 100;
 const MAX_DISCOUNT_LEVELS = 10;
+const MAX_WORKING_DAYS = 31;
 
 const integer = (label, min, max) =>
   z
@@ -37,6 +38,12 @@ const SETTING_DEFINITIONS = Object.freeze({
   defaultRoomsCount: { default: 20, schema: count('Default rooms count') },
   maxChildrenInGroup: { default: 20, schema: count('Max children in group') },
   maxGroups: { default: 30, schema: count('Max groups') },
+  workingDaysPerMonth: {
+    default: 21,
+    schema: integer('Working days per month', 1, MAX_WORKING_DAYS),
+  },
+  // Stored as an integer percent (like yearlyDiscountPercent); services divide by 100
+  attendanceRatePercent: { default: 80, schema: percent('Attendance rate', 0) },
   groupExtraPayThreshold: { default: 12, schema: count('Extra pay threshold', 0) },
   educatorPerChild: { default: 200000, schema: money('Educator: rate per child') },
   educatorExtraPay: { default: 300000, schema: money('Educator: extra pay', 0) },
