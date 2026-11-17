@@ -1,0 +1,803 @@
+From 8a2ae4fa5a1ee8f598d009d607ebb2d47d11ffc1 Mon Sep 17 00:00:00 2001
+From: claude <noreply@anthropic.com>
+Date: Tue, 17 Nov 2026 13:27:59 +0000
+Subject: [PATCH] feat(calendar): working days per month, used by forecast
+
+- src/domain/calendar.js: workingDays(year, month, holidays) = Mon-Fri minus
+  holidays (weekend holidays and duplicates are not subtracted twice),
+  month helpers, current month by Europe/Kyiv
+- forecast.js: meals use the working days of the forecast month instead of
+  the fixed 21 (resolveWorkingDays); POST /forecast accepts optional month
+  and returns calendar { month, workingDays }
+- Unit tests: February, leap year, holiday on a weekend, Kyiv month boundary
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UCQDF21NQ2cPLQwHMwH7Qz
+---
+ docs/ANALYTICS.md                             |   6 +
+ docs/DOMAIN.md                                |  44 +++--
+ docs/openapi.yaml                             |  40 +++++
+ src/domain/calendar.js                        | 104 +++++++++++
+ src/domain/forecast.js                        |  28 ++-
+ src/modules/analytics/analytics.schema.js     |   6 +
+ src/modules/analytics/analytics.service.js    |  23 ++-
+ tests/integration/analytics.test.js           |  25 +++
+ .../unit/analytics/analytics.service.test.js  |  44 +++++
+ tests/unit/domain/calendar.test.js            | 170 ++++++++++++++++++
+ tests/unit/domain/forecast.test.js            |  73 ++++++++
+ 11 files changed, 545 insertions(+), 18 deletions(-)
+ create mode 100644 src/domain/calendar.js
+ create mode 100644 tests/unit/domain/calendar.test.js
+
+diff --git a/docs/ANALYTICS.md b/docs/ANALYTICS.md
+index 224234d..cebf0b6 100644
+--- a/docs/ANALYTICS.md
++++ b/docs/ANALYTICS.md
+@@ -188,6 +188,12 @@ if (admitted <= g * threshold) {
+ 
+ ---
+ 
++#### 4.4.1. Робочі дні місяця прогнозу
++
++Харчування в прогнозі рахується за фактичними робочими днями місяця (`src/domain/calendar.js`): Пн–Пт мінус свята з налаштування `HOLIDAYS`. Місяць задає поле `month` (`YYYY-MM`) у тілі `POST /forecast`; без нього — поточний місяць за Києвом. У відповіді поле `calendar: { month, workingDays }` показує, за скільки днів пораховано харчування. Явне `workingDays` в опціях `optimizeKindergartenCapacity` має пріоритет; без `workingDays` і `month` лишається запасне значення 21.
++
++---
++
+ ### 4.5. Три управлінські бізнес-моделі (`strategies`)
+ 
+ Для керівництва садка алгоритм одночасно розраховує 3 альтернативні стратегії:
+diff --git a/docs/DOMAIN.md b/docs/DOMAIN.md
+index 38b83e1..cc791fc 100644
+--- a/docs/DOMAIN.md
++++ b/docs/DOMAIN.md
+@@ -17,11 +17,12 @@
+ 
+ ## 2. Компоненти
+ 
+-| Файл                    | Що рахує                     | Функції                                                                      |
+-| ----------------------- | ---------------------------- | ---------------------------------------------------------------------------- |
+-| `src/domain/age.js`     | Вік дитини на 1 вересня      | `ageOnSeptemberFirst`                                                        |
+-| `src/domain/salary.js`  | Зарплати персоналу на місяць | `educatorSalary`, `assistantSalary`, `clubTeacherSalary`, `managerSalary`    |
+-| `src/domain/pricing.js` | Вартість для батьків         | `tuitionMonthly`, `mealPerDay`, `mealMonthly`, `monthlyTotal`, `yearlyTotal` |
++| Файл                     | Що рахує                     | Функції                                                                      |
++| ------------------------ | ---------------------------- | ---------------------------------------------------------------------------- |
++| `src/domain/age.js`      | Вік дитини на 1 вересня      | `ageOnSeptemberFirst`                                                        |
++| `src/domain/salary.js`   | Зарплати персоналу на місяць | `educatorSalary`, `assistantSalary`, `clubTeacherSalary`, `managerSalary`    |
++| `src/domain/pricing.js`  | Вартість для батьків         | `tuitionMonthly`, `mealPerDay`, `mealMonthly`, `monthlyTotal`, `yearlyTotal` |
++| `src/domain/calendar.js` | Робочі дні місяця            | `workingDays`, `workingDaysInMonth`, `monthSequence`, `currentMonth`         |
+ 
+ Детальний розбір віку і зарплат — алгоритм, граничні випадки, покроковий приклад — у [DOMAIN_AGE_SALARY.md](DOMAIN_AGE_SALARY.md).
+ 
+@@ -97,7 +98,7 @@ ageOnSeptemberFirst('2020-02-29', 2026); // 6 — високосний рік
+ 
+ - **Знижки (10/20/30%) діють лише на навчання.** На харчування — ні: це окремо перевірено тестом для кожної дозволеної знижки.
+ - **Річна оплата** дає знижку 12% на навчання; на харчування знижка не діє (відповідно до ТЗ).
+-- **Робочі дні:** 21 на місяць, 252 на рік за замовчуванням (параметри `workingDays`, `workingDaysPerYear`). Для конкретного місяця можна передати фактичну кількість днів.
++- **Робочі дні:** 21 на місяць, 252 на рік за замовчуванням (параметри `workingDays`, `workingDaysPerYear`). Для конкретного місяця фактичну кількість дає `calendar.js` (розділ 5.5).
+ 
+ ### 5.3. Ціна харчування за віком
+ 
+@@ -130,6 +131,25 @@ yearlyTotal(4, 20); // 25272000 копійок = 252 720 грн
+ 
+ ---
+ 
++### 5.5. Робочий календар (`calendar.js`)
++
++`workingDays(year, month, holidays)` — робочі дні місяця: понеділок–п'ятниця мінус свята. Свята беруться з налаштування `HOLIDAYS` (масив дат `YYYY-MM-DD`, змінює лише ADMIN).
++
++| Правило                                   | Приклад                                                                    |
++| ----------------------------------------- | -------------------------------------------------------------------------- |
++| Пн–Пт без свят                            | листопад 2026 → 21; лютий 2026 → 20; лютий 2028 (високосний, 29 днів) → 21 |
++| Свято в будній день віднімається          | серпень 2026, 24.08 — понеділок → 20                                       |
++| Свято у вихідний не віднімається вдруге   | березень 2026, 08.03 — неділя → 22                                         |
++| Дубль у списку свят не віднімається двічі | `['2026-08-24', '2026-08-24']` → 20                                        |
++| Свято з іншого місяця не впливає          | листопад 2026 зі святом 25.12 → 21                                         |
++| Місяць без робочих днів                   | 0 днів → `mealMonthly(age, 0)` = 0                                         |
++
++- `currentMonth(now)` — поточний місяць садка **за Києвом** (`Europe/Kyiv`): о 00:30 1 листопада за Києвом у UTC ще жовтень, а місяць уже листопад.
++- `workingDaysInMonth('YYYY-MM', holidays)`, `addMonths`, `monthSequence(from, count)` — для прогнозів по місяцях.
++- Прогноз `POST /analytics/forecast` рахує харчування за робочими днями місяця прогнозу (`month` у запиті, за замовчуванням поточний), а не за сталими 21 (`resolveWorkingDays` у `forecast.js`).
++
++---
++
+ ## 6. Як використовувати в сервісах
+ 
+ Domain-функції не знають про базу: сервіс дістає дані, перетворює їх на числа й викликає формулу.
+@@ -173,9 +193,9 @@ npm run test:cov
+ 
+ Поки відповіді немає, діє поточна реалізація:
+ 
+-| Питання                                                            | Поточне рішення                                                        |
+-| ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+-| «+5 000 за кожну дитину після 12» — на додачу до 2 000 чи замість? | На додачу                                                              |
+-| Скільки днів харчування в конкретному місяці?                      | 21 за замовчуванням; фактичну кількість можна передати в `mealMonthly` |
+-| Чи оплачується навчання влітку при річній оплаті?                  | Так, 12 місяців                                                        |
+-| Чи можуть ціни й зарплати змінюватись адміном?                     | Так: сервіс бере значення з таблиці `Setting` і передає їх параметрами |
++| Питання                                                            | Поточне рішення                                                                               |
++| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
++| «+5 000 за кожну дитину після 12» — на додачу до 2 000 чи замість? | На додачу                                                                                     |
++| Скільки днів харчування в конкретному місяці?                      | `workingDays(year, month, HOLIDAYS)` з `calendar.js` (розділ 5.5); 21 — лише запасне значення |
++| Чи оплачується навчання влітку при річній оплаті?                  | Так, 12 місяців                                                                               |
++| Чи можуть ціни й зарплати змінюватись адміном?                     | Так: сервіс бере значення з таблиці `Setting` і передає їх параметрами                        |
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index 35813c6..6c99329 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -1057,6 +1057,11 @@ components:
+         attendanceRate:
+           type: number
+           example: 0.8
++        month:
++          type: string
++          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
++          description: Місяць прогнозу YYYY-MM; від нього залежать робочі дні й харчування. За замовчуванням — поточний місяць за Києвом
++          example: '2026-12'
+         age2:
+           type: integer
+           example: 20
+@@ -2499,3 +2504,38 @@ paths:
+       responses:
+         '200':
+           description: Оптимальний план формування груп та прогноз доходу
++          content:
++            application/json:
++              schema:
++                type: object
++                description: Структура плану й стратегій описана в docs/ANALYTICS.md (розділ 4); суми — об'єкти Money
++                additionalProperties: true
++                properties:
++                  requestedDemand:
++                    type: object
++                    description: Запитаний попит за віком
++                  recommended:
++                    type: object
++                    nullable: true
++                    description: Рекомендована конфігурація груп із доходами, витратами й профітом
++                  topVariants:
++                    type: array
++                    description: Найкращі альтернативні конфігурації
++                    items:
++                      type: object
++                  strategies:
++                    type: object
++                    description: Три управлінські моделі (розділ 4.5 ANALYTICS.md)
++                  marginalEconomics:
++                    type: object
++                    description: Граничні показники (додаткова дитина, поради щодо черги)
++                  calendar:
++                    type: object
++                    description: Місяць прогнозу та його робочі дні (Пн–Пт мінус свята з HOLIDAYS), за якими пораховано харчування
++                    properties:
++                      month:
++                        type: string
++                        example: '2026-12'
++                      workingDays:
++                        type: integer
++                        example: 22
+diff --git a/src/domain/calendar.js b/src/domain/calendar.js
+new file mode 100644
+index 0000000..bd98c56
+--- /dev/null
++++ b/src/domain/calendar.js
+@@ -0,0 +1,104 @@
++const { BadRequestError } = require('../errors/AppError');
++const { MONTH_PATTERN, isWeekend, localMonth } = require('./absence');
++
++// Робочий календар садка: робочі дні — понеділок–п'ятниця, мінус свята з налаштувань (HOLIDAYS).
++// Дати свят — календарні ('YYYY-MM-DD'), тож день тижня рахуємо через UTC без зсуву поясу.
++// «Поточний місяць» — за Києвом (localMonth), бо сервер може працювати в UTC.
++
++const MONTHS_IN_YEAR = 12;
++
++function assertYearMonth(year, month) {
++  if (!Number.isInteger(year) || year < 1970 || year > 9999) {
++    throw new BadRequestError(`Рік має бути цілим числом від 1970 до 9999: ${year}`);
++  }
++  if (!Number.isInteger(month) || month < 1 || month > MONTHS_IN_YEAR) {
++    throw new BadRequestError(`Місяць має бути цілим числом від 1 до 12: ${month}`);
++  }
++}
++
++/** Кількість днів у місяці (month: 1–12): лютий високосного року — 29 */
++function daysInMonth(year, month) {
++  assertYearMonth(year, month);
++  return new Date(Date.UTC(year, month, 0)).getUTCDate();
++}
++
++/** 'YYYY-MM-DD' для дня місяця */
++function isoDate(year, month, day) {
++  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
++}
++
++/**
++ * Робочі дні місяця: Пн–Пт мінус свята.
++ * Свято у вихідний не віднімається (його й так немає серед Пн–Пт), свято з іншого місяця
++ * не впливає, а дубль у списку не віднімається вдруге.
++ *
++ * @param {number} year напр. 2026
++ * @param {number} month 1–12
++ * @param {string[]} [holidays=[]] дати 'YYYY-MM-DD'
++ * @returns {number}
++ */
++function workingDays(year, month, holidays = []) {
++  if (!Array.isArray(holidays)) {
++    throw new BadRequestError('Свята мають бути масивом дат YYYY-MM-DD');
++  }
++  const total = daysInMonth(year, month);
++  const off = new Set(holidays);
++  let count = 0;
++  for (let day = 1; day <= total; day += 1) {
++    const date = isoDate(year, month, day);
++    if (!isWeekend(date) && !off.has(date)) {
++      count += 1;
++    }
++  }
++  return count;
++}
++
++/** 'YYYY-MM' -> { year, month } */
++function parseMonth(value) {
++  const match = MONTH_PATTERN.exec(value);
++  if (!match) {
++    throw new BadRequestError(`Місяць має бути у форматі YYYY-MM: ${value}`);
++  }
++  return { year: Number(match[1]), month: Number(match[2]) };
++}
++
++/** Робочі дні місяця 'YYYY-MM' */
++function workingDaysInMonth(value, holidays = []) {
++  const { year, month } = parseMonth(value);
++  return workingDays(year, month, holidays);
++}
++
++/** 'YYYY-MM' + n місяців -> 'YYYY-MM' */
++function addMonths(value, count) {
++  const { year, month } = parseMonth(value);
++  const index = year * MONTHS_IN_YEAR + (month - 1) + count;
++  const nextYear = Math.floor(index / MONTHS_IN_YEAR);
++  const nextMonth = (index % MONTHS_IN_YEAR) + 1;
++  // Результат має лишитися в межах календаря (1970-01…9999-12), інакше — зрозуміла 400
++  assertYearMonth(nextYear, nextMonth);
++  return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
++}
++
++/** count місяців поспіль, починаючи з from: ['2026-11', '2026-12', '2027-01', …] */
++function monthSequence(from, count) {
++  if (!Number.isInteger(count) || count < 1) {
++    throw new BadRequestError(`Кількість місяців має бути цілим числом ≥ 1: ${count}`);
++  }
++  return Array.from({ length: count }, (_, i) => addMonths(from, i));
++}
++
++/** Поточний місяць садка 'YYYY-MM' за Києвом */
++function currentMonth(now = new Date()) {
++  return localMonth(now);
++}
++
++module.exports = {
++  MONTH_PATTERN,
++  daysInMonth,
++  workingDays,
++  workingDaysInMonth,
++  parseMonth,
++  addMonths,
++  monthSequence,
++  currentMonth,
++};
+diff --git a/src/domain/forecast.js b/src/domain/forecast.js
+index 57b4bf4..d13813c 100644
+--- a/src/domain/forecast.js
++++ b/src/domain/forecast.js
+@@ -2,6 +2,7 @@ const { BadRequestError } = require('../errors/AppError');
+ const { ErrorCodes } = require('../errors/errorCodes');
+ const { tuitionMonthly, mealMonthly } = require('./pricing');
+ const { educatorSalary, assistantSalary, clubTeacherSalary, managerSalary } = require('./salary');
++const { workingDaysInMonth } = require('./calendar');
+ 
+ const MAX_KINDERGARTEN_CAPACITY = 300;
+ const MAX_CHILDREN_PER_GROUP = 20;
+@@ -21,9 +22,29 @@ const TEACHER_DAILY_LESSONS = 9; // 9 занять по 30 хв на день
+ const WORK_DAYS_PER_WEEK = 5;
+ const TEACHER_WEEKLY_CAPACITY = TEACHER_DAILY_LESSONS * WORK_DAYS_PER_WEEK; // 45 занять на тиждень
+ const MAX_GROUPS_PER_TEACHER = Math.floor(TEACHER_WEEKLY_CAPACITY / LESSONS_PER_WEEK_PER_GROUP); // 15 груп
++// Запасне значення, лише якщо не передано ні workingDays, ні month (див. resolveWorkingDays)
+ const DEFAULT_WORKING_DAYS = 21;
+ const DEFAULT_ATTENDANCE_RATE = 0.8; // Коефіцієнт фактичної відвідуваності з урахуванням хвороб дітей (80%)
+ 
++/**
++ * Робочі дні місяця прогнозу:
++ * - options.workingDays — якщо передано явно;
++ * - інакше календар місяця options.month ('YYYY-MM'): Пн–Пт мінус options.holidays;
++ * - інакше DEFAULT_WORKING_DAYS.
++ *
++ * @param {Object} [options={}]
++ * @returns {number}
++ */
++function resolveWorkingDays(options = {}) {
++  if (options.workingDays !== undefined) {
++    return options.workingDays;
++  }
++  if (options.month !== undefined) {
++    return workingDaysInMonth(options.month, options.holidays ?? []);
++  }
++  return DEFAULT_WORKING_DAYS;
++}
++
+ /**
+  * Валідує параметри конфігурації (options).
+  *
+@@ -35,7 +56,7 @@ function validateOptions(options = {}) {
+     options.maxChildrenInGroup ?? options.maxGroupSize ?? MAX_CHILDREN_PER_GROUP;
+   const totalRoomsCount = options.totalRoomsCount ?? options.roomsCount ?? DEFAULT_TOTAL_ROOMS;
+   const clubRoomsCount = options.clubRoomsCount ?? DEFAULT_CLUB_ROOMS;
+-  const workingDays = options.workingDays ?? DEFAULT_WORKING_DAYS;
++  const workingDays = resolveWorkingDays(options);
+   const attendanceRate = options.attendanceRate ?? DEFAULT_ATTENDANCE_RATE;
+ 
+   if (options.assistantExtra !== undefined) {
+@@ -349,10 +370,10 @@ function evaluateConfiguration(gVec, demand, options = {}, mode = 'standard') {
+     maxChildrenInGroup = options.maxGroupSize ?? MAX_CHILDREN_PER_GROUP,
+     mealBasePerDay = 30000,
+     mealPerExtraYear = 10000,
+-    workingDays = DEFAULT_WORKING_DAYS,
+     managersCount = DEFAULT_MANAGERS,
+     attendanceRate = DEFAULT_ATTENDANCE_RATE,
+   } = options;
++  const workingDays = resolveWorkingDays(options);
+ 
+   let totalTuitionIncome = 0;
+   let totalMealIncome = 0;
+@@ -515,10 +536,10 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
+     clubSalary = 4000000,
+     mealBasePerDay = 30000,
+     mealPerExtraYear = 10000,
+-    workingDays = DEFAULT_WORKING_DAYS,
+     maxChildrenInGroup = options.maxGroupSize ?? MAX_CHILDREN_PER_GROUP,
+     attendanceRate = DEFAULT_ATTENDANCE_RATE,
+   } = options;
++  const workingDays = resolveWorkingDays(options);
+ 
+   const maxGroupRooms = Math.max(0, totalRoomsCount - clubRoomsCount);
+   const totalDemand = demand[2] + demand[3] + demand[4] + demand[5];
+@@ -996,6 +1017,7 @@ module.exports = {
+   evaluateConfiguration,
+   optimizeKindergartenCapacity,
+   validateOptions,
++  resolveWorkingDays,
+   MAX_KINDERGARTEN_CAPACITY,
+   MAX_CHILDREN_PER_GROUP,
+   MAX_GROUP_ROOMS,
+diff --git a/src/modules/analytics/analytics.schema.js b/src/modules/analytics/analytics.schema.js
+index e54ef61..6d561c2 100644
+--- a/src/modules/analytics/analytics.schema.js
++++ b/src/modules/analytics/analytics.schema.js
+@@ -1,4 +1,8 @@
+ const { z } = require('zod');
++const { MONTH_PATTERN } = require('../../domain/absence');
++
++/** Місяць 'YYYY-MM' */
++const monthSchema = z.string().regex(MONTH_PATTERN, 'month must be in YYYY-MM format');
+ 
+ const positiveId = z.coerce
+   .number({ error: 'Group ID must be a number' })
+@@ -78,6 +82,8 @@ const forecastBodySchema = z
+     demand: z.record(z.unknown()).optional(),
+     ageGroups: z.record(z.unknown()).optional(),
+     attendanceRate: attendanceRateSchema,
++    // Місяць прогнозу: від нього залежать робочі дні й харчування. За замовчуванням — поточний
++    month: monthSchema.optional(),
+     threshold: z
+       .preprocess(
+         (val) => (typeof val === 'string' && val.trim() !== '' ? Number(val) : val),
+diff --git a/src/modules/analytics/analytics.service.js b/src/modules/analytics/analytics.service.js
+index cc0190e..121ffbb 100644
+--- a/src/modules/analytics/analytics.service.js
++++ b/src/modules/analytics/analytics.service.js
+@@ -6,7 +6,8 @@ const {
+   clubTeacherSalary,
+   managerSalary,
+ } = require('../../domain/salary');
+-const { optimizeKindergartenCapacity } = require('../../domain/forecast');
++const { optimizeKindergartenCapacity, resolveWorkingDays } = require('../../domain/forecast');
++const { currentMonth } = require('../../domain/calendar');
+ const { toMoney } = require('../../domain/money');
+ const { settingsService } = require('../settings/settings.service');
+ const { analyticsRepository } = require('./analytics.repository');
+@@ -29,9 +30,19 @@ function isStaffActive(staffRelation, staffId) {
+ }
+ 
+ class AnalyticsService {
+-  constructor(repository = analyticsRepository, settings = settingsService) {
++  /**
++   * @param {object} repository
++   * @param {object} settings
++   * @param {() => Date} now поточний момент: від нього рахується поточний місяць (підміняється в тестах)
++   */
++  constructor(
++    repository = analyticsRepository,
++    settings = settingsService,
++    now = () => new Date()
++  ) {
+     this.repository = repository;
+     this.settings = settings;
++    this.now = now;
+   }
+ 
+   /**
+@@ -382,10 +393,16 @@ class AnalyticsService {
+       mealBasePerDay: this.settings.get('MEAL_BASE_PER_DAY'),
+       mealPerExtraYear: this.settings.get('MEAL_PER_EXTRA_YEAR'),
+       attendanceRate: demand.attendanceRate ?? this.settings.get('ATTENDANCE_RATE_PERCENT') / 100,
++      // Харчування — за робочими днями місяця прогнозу (Пн–Пт мінус свята), а не за сталими 21
++      month: demand.month ?? currentMonth(this.now()),
++      holidays: this.settings.get('HOLIDAYS'),
+     };
+ 
+     const rawResult = optimizeKindergartenCapacity(demand, options);
+-    return formatOptimalForecastMoney(rawResult);
++    return {
++      ...formatOptimalForecastMoney(rawResult),
++      calendar: { month: options.month, workingDays: resolveWorkingDays(options) },
++    };
+   }
+ }
+ 
+diff --git a/tests/integration/analytics.test.js b/tests/integration/analytics.test.js
+index fa1a3c8..706f9cf 100644
+--- a/tests/integration/analytics.test.js
++++ b/tests/integration/analytics.test.js
+@@ -447,6 +447,31 @@ describe('Analytics API (Supertest)', () => {
+       );
+     });
+ 
++    test('робочі дні беруться з календаря місяця прогнозу', async () => {
++      const send = (month) =>
++        request(app)
++          .post(`${BASE}/forecast`)
++          .set('Authorization', tokenFor('ADMIN'))
++          .send({ 2: 20, 3: 20, 4: 20, 5: 20, month });
++      const february = await send('2026-02');
++      const december = await send('2026-12');
++      expect(february.status).toBe(StatusCodes.OK);
++      expect(february.body.calendar).toEqual({ month: '2026-02', workingDays: 20 });
++      expect(december.body.calendar).toEqual({ month: '2026-12', workingDays: 23 });
++      expect(february.body.recommended.financials.mealIncome.kopiykas).toBeLessThan(
++        december.body.recommended.financials.mealIncome.kopiykas
++      );
++    });
++
++    test('некоректний month -> 400', async () => {
++      const res = await request(app)
++        .post(`${BASE}/forecast`)
++        .set('Authorization', tokenFor('ADMIN'))
++        .send({ targetChildrenCount: 10, month: '2026-13' });
++      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
++      expect(res.body.error.details[0].message).toBe('month must be in YYYY-MM format');
++    });
++
+     test('успішне прогнозування з динамічним віковим попитом: 200 OK', async () => {
+       const res = await request(app)
+         .post(`${BASE}/forecast`)
+diff --git a/tests/unit/analytics/analytics.service.test.js b/tests/unit/analytics/analytics.service.test.js
+index 570161d..6bad34f 100644
+--- a/tests/unit/analytics/analytics.service.test.js
++++ b/tests/unit/analytics/analytics.service.test.js
+@@ -1054,6 +1054,50 @@ describe('AnalyticsService', () => {
+       expect(res.requestedDemand.totalChildren).toBe(0);
+       expect(res.recommended.groupsCount).toBe(0);
+     });
++
++    describe('робочі дні з календаря замість сталих 21', () => {
++      const withCalendar = (holidays, now) =>
++        new AnalyticsService(
++          mockRepo,
++          { get: jest.fn((key) => (key === 'HOLIDAYS' ? holidays : DEFAULT_SETTINGS[key])) },
++          () => now
++        );
++      const demand = { 2: 20, 3: 20, 4: 20, 5: 20 };
++
++      test('місяць за замовчуванням — поточний за Києвом, свята з налаштувань', async () => {
++        // 30.04.2026 22:30 UTC — у Києві вже 1 травня
++        const res = await withCalendar(
++          ['2026-05-01', '2026-05-08'],
++          new Date('2026-04-30T22:30:00Z')
++        ).calculateOptimalForecast(demand);
++        expect(res.calendar).toEqual({ month: '2026-05', workingDays: 19 });
++      });
++
++      test('month у запиті має пріоритет', async () => {
++        const res = await withCalendar(
++          [],
++          new Date('2026-05-15T10:00:00Z')
++        ).calculateOptimalForecast({ ...demand, month: '2026-11' });
++        expect(res.calendar).toEqual({ month: '2026-11', workingDays: 21 });
++      });
++
++      test('нові свята в налаштуваннях зменшують харчування', async () => {
++        const now = new Date('2026-08-10T10:00:00Z');
++        const without = await withCalendar([], now).calculateOptimalForecast(demand);
++        const withHoliday = await withCalendar(['2026-08-24'], now).calculateOptimalForecast(
++          demand
++        );
++        expect(without.calendar.workingDays).toBe(21);
++        expect(withHoliday.calendar.workingDays).toBe(20);
++        expect(withHoliday.recommended.financials.mealIncome.kopiykas).toBeLessThan(
++          without.recommended.financials.mealIncome.kopiykas
++        );
++      });
++
++      test('поточний момент за замовчуванням — new Date()', () => {
++        expect(new AnalyticsService(mockRepo, mockSettings).now()).toBeInstanceOf(Date);
++      });
++    });
+   });
+ 
+   describe('formatVariantFinancials & formatOptimalForecastMoney helpers', () => {
+diff --git a/tests/unit/domain/calendar.test.js b/tests/unit/domain/calendar.test.js
+new file mode 100644
+index 0000000..eef20df
+--- /dev/null
++++ b/tests/unit/domain/calendar.test.js
+@@ -0,0 +1,170 @@
++const {
++  daysInMonth,
++  workingDays,
++  workingDaysInMonth,
++  parseMonth,
++  addMonths,
++  monthSequence,
++  currentMonth,
++} = require('../../../src/domain/calendar');
++const { mealMonthly } = require('../../../src/domain/pricing');
++const { BadRequestError } = require('../../../src/errors/AppError');
++
++// Свята із seed (чернетка списку для BA)
++const HOLIDAYS_2026 = [
++  '2026-01-01',
++  '2026-03-08',
++  '2026-04-12',
++  '2026-05-01',
++  '2026-05-08',
++  '2026-05-31',
++  '2026-06-28',
++  '2026-07-15',
++  '2026-08-24',
++  '2026-10-01',
++  '2026-12-25',
++];
++
++describe('domain/calendar', () => {
++  describe('daysInMonth', () => {
++    test.each([
++      [2026, 1, 31],
++      [2026, 2, 28],
++      [2026, 4, 30],
++      [2024, 2, 29], // високосний
++      [2028, 2, 29], // високосний
++      [2100, 2, 28], // ділиться на 100, але не на 400
++      [2000, 2, 29], // ділиться на 400
++    ])('%i-%i -> %i днів', (year, month, days) => {
++      expect(daysInMonth(year, month)).toBe(days);
++    });
++  });
++
++  describe('workingDays: Пн–Пт без свят', () => {
++    test.each([
++      ['листопад 2026', 2026, 11, 21],
++      ['лютий 2026 (починається в неділю)', 2026, 2, 20],
++      ['лютий 2027', 2027, 2, 20],
++      ['лютий 2028 (високосний, 29 днів)', 2028, 2, 21],
++      ['лютий 2024 (високосний)', 2024, 2, 21],
++      ['березень 2026', 2026, 3, 22],
++      ['грудень 2026', 2026, 12, 23],
++    ])('%s -> %i', (_name, year, month, days) => {
++      expect(workingDays(year, month)).toBe(days);
++    });
++  });
++
++  describe('workingDays зі святами', () => {
++    test('листопад 2026: свят немає -> 21', () => {
++      expect(workingDays(2026, 11, HOLIDAYS_2026)).toBe(21);
++    });
++
++    test.each([
++      ['травень 2026: 1 і 8 травня — п’ятниці, Трійця — неділя', 2026, 5, 19],
++      ['серпень 2026: 24 серпня — понеділок', 2026, 8, 20],
++      ['грудень 2026: 25 грудня — п’ятниця', 2026, 12, 22],
++      ['жовтень 2026: 1 жовтня — четвер', 2026, 10, 21],
++    ])('%s -> %i', (_name, year, month, days) => {
++      expect(workingDays(year, month, HOLIDAYS_2026)).toBe(days);
++    });
++
++    test('свято у вихідний не віднімається вдруге: 8 березня 2026 — неділя', () => {
++      expect(workingDays(2026, 3, ['2026-03-08'])).toBe(22);
++      expect(workingDays(2026, 3, HOLIDAYS_2026)).toBe(22);
++    });
++
++    test('дубль у списку не віднімається двічі', () => {
++      expect(workingDays(2026, 8, ['2026-08-24', '2026-08-24'])).toBe(20);
++    });
++
++    test('свято з іншого місяця чи року не впливає', () => {
++      expect(workingDays(2026, 11, ['2026-12-25', '2025-11-03'])).toBe(21);
++    });
++
++    test('свято 29 лютого у високосний рік', () => {
++      expect(workingDays(2028, 2, ['2028-02-29'])).toBe(20); // вівторок
++    });
++
++    test('усі будні — свята -> 0 робочих днів, харчування 0', () => {
++      const allWeekdays = Array.from(
++        { length: 28 },
++        (_, i) => `2026-02-${String(i + 1).padStart(2, '0')}`
++      );
++      const days = workingDays(2026, 2, allWeekdays);
++      expect(days).toBe(0);
++      expect(mealMonthly(3, days)).toBe(0);
++    });
++  });
++
++  describe('валідація', () => {
++    test.each([
++      [2026, 0],
++      [2026, 13],
++      [2026, 1.5],
++      [1969, 1],
++      [10000, 1],
++      ['2026', 1],
++    ])('workingDays(%p, %p) -> 400', (year, month) => {
++      expect(() => workingDays(year, month)).toThrow(BadRequestError);
++    });
++
++    test('свята не масивом -> 400', () => {
++      expect(() => workingDays(2026, 11, '2026-11-02')).toThrow('Свята мають бути масивом');
++    });
++  });
++
++  describe('місяць YYYY-MM', () => {
++    test('parseMonth', () => {
++      expect(parseMonth('2026-11')).toEqual({ year: 2026, month: 11 });
++    });
++
++    test.each(['2026-13', '2026-1', '11-2026', ''])('parseMonth(%p) -> 400', (value) => {
++      expect(() => parseMonth(value)).toThrow(BadRequestError);
++    });
++
++    test('workingDaysInMonth', () => {
++      expect(workingDaysInMonth('2026-11')).toBe(21);
++      expect(workingDaysInMonth('2026-05', HOLIDAYS_2026)).toBe(19);
++    });
++
++    test.each([
++      ['2026-11', 0, '2026-11'],
++      ['2026-11', 1, '2026-12'],
++      ['2026-11', 2, '2027-01'],
++      ['2026-11', 14, '2028-01'],
++      ['2026-01', -1, '2025-12'],
++    ])('addMonths(%s, %i) -> %s', (from, count, expected) => {
++      expect(addMonths(from, count)).toBe(expected);
++    });
++
++    test.each([
++      ['9999-12', 1],
++      ['1970-01', -1],
++      ['0001-01', 0],
++    ])('addMonths(%s, %i) поза 1970–9999 -> 400 з роком у тексті', (from, count) => {
++      expect(() => addMonths(from, count)).toThrow(/Рік має бути цілим числом від 1970 до 9999/);
++    });
++
++    test('monthSequence: місяці поспіль через межу року', () => {
++      expect(monthSequence('2026-11', 3)).toEqual(['2026-11', '2026-12', '2027-01']);
++    });
++
++    test.each([0, -1, 1.5])('monthSequence з кількістю %p -> 400', (count) => {
++      expect(() => monthSequence('2026-11', count)).toThrow(BadRequestError);
++    });
++  });
++
++  describe('currentMonth: межі місяця за Києвом', () => {
++    test('31.10 о 23:30 за Києвом — ще жовтень', () => {
++      expect(currentMonth(new Date('2026-10-31T21:30:00Z'))).toBe('2026-10');
++    });
++
++    test('у UTC ще 31.10, а в Києві вже листопад', () => {
++      expect(currentMonth(new Date('2026-10-31T22:30:00Z'))).toBe('2026-11');
++    });
++
++    test('без аргументу — поточний момент', () => {
++      expect(currentMonth()).toMatch(/^\d{4}-\d{2}$/);
++    });
++  });
++});
+diff --git a/tests/unit/domain/forecast.test.js b/tests/unit/domain/forecast.test.js
+index a78362b..4fc40a4 100644
+--- a/tests/unit/domain/forecast.test.js
++++ b/tests/unit/domain/forecast.test.js
+@@ -9,6 +9,7 @@ const {
+   validateOptions,
+   evaluateConfiguration,
+   optimizeKindergartenCapacity,
++  resolveWorkingDays,
+   MAX_KINDERGARTEN_CAPACITY,
+   MAX_CHILDREN_PER_GROUP,
+   MAX_GROUP_ROOMS,
+@@ -762,4 +763,76 @@ describe('Domain: forecast (src/domain/forecast.js)', () => {
+       expect(advice.reason).toContain('не виходить на беззбитковість');
+     });
+   });
++
++  describe('робочі дні з календаря (resolveWorkingDays)', () => {
++    const HOLIDAYS = ['2026-05-01', '2026-05-08', '2026-12-25'];
++    const demand = { 2: 10, 3: 0, 4: 0, 5: 0 };
++    const oneGroup = { 2: 1, 3: 0, 4: 0, 5: 0 };
++
++    test('явне workingDays має пріоритет над місяцем', () => {
++      expect(resolveWorkingDays({ workingDays: 18, month: '2026-05', holidays: HOLIDAYS })).toBe(
++        18
++      );
++    });
++
++    test('місяць + свята: травень 2026 -> 19, листопад 2026 -> 21', () => {
++      expect(resolveWorkingDays({ month: '2026-05', holidays: HOLIDAYS })).toBe(19);
++      expect(resolveWorkingDays({ month: '2026-11', holidays: HOLIDAYS })).toBe(21);
++    });
++
++    test('місяць без списку свят — лише Пн–Пт', () => {
++      expect(resolveWorkingDays({ month: '2026-05' })).toBe(21);
++    });
++
++    test('ні workingDays, ні місяця — запасне значення 21', () => {
++      expect(resolveWorkingDays()).toBe(DEFAULT_WORKING_DAYS);
++    });
++
++    test('некоректний місяць -> 400', () => {
++      expect(() => validateOptions({ month: '2026-13' })).toThrow(BadRequestError);
++    });
++
++    test('харчування рахується за робочими днями місяця', () => {
++      const may = evaluateConfiguration(oneGroup, demand, { month: '2026-05', holidays: HOLIDAYS });
++      const explicit19 = evaluateConfiguration(oneGroup, demand, { workingDays: 19 });
++      const december = evaluateConfiguration(oneGroup, demand, {
++        month: '2026-12',
++        holidays: HOLIDAYS,
++      });
++      expect(may.mealIncome).toBe(explicit19.mealIncome);
++      expect(december.mealIncome).toBe(
++        evaluateConfiguration(oneGroup, demand, { workingDays: 22 }).mealIncome
++      );
++      expect(may.mealIncome).toBeLessThan(december.mealIncome);
++      expect(may.tuitionIncome).toBe(december.tuitionIncome);
++    });
++
++    test('місяць без робочих днів -> харчування 0', () => {
++      const allFebruary = Array.from(
++        { length: 28 },
++        (_, i) => `2026-02-${String(i + 1).padStart(2, '0')}`
++      );
++      const result = evaluateConfiguration(oneGroup, demand, {
++        month: '2026-02',
++        holidays: allFebruary,
++      });
++      expect(result.mealIncome).toBe(0);
++      expect(result.tuitionIncome).toBeGreaterThan(0);
++    });
++
++    test('optimizeKindergartenCapacity бере робочі дні з місяця', () => {
++      const fullDemand = { 2: 20, 3: 20, 4: 20, 5: 20 };
++      const may = optimizeKindergartenCapacity(fullDemand, {
++        month: '2026-05',
++        holidays: HOLIDAYS,
++      });
++      const nov = optimizeKindergartenCapacity(fullDemand, {
++        month: '2026-11',
++        holidays: HOLIDAYS,
++      });
++      expect(may.recommended.totalAdmitted).toBe(nov.recommended.totalAdmitted);
++      expect(may.recommended.mealIncome).toBeGreaterThan(0);
++      expect(may.recommended.mealIncome).toBeLessThan(nov.recommended.mealIncome);
++    });
++  });
+ });
+-- 
+2.43.0
+

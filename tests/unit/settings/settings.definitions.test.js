@@ -28,7 +28,7 @@ describe('toConstantCase', () => {
 describe('SETTING_DEFINITIONS, SETTING_KEYS, DEFINITIONS_BY_CONSTANT', () => {
   test('SETTING_KEYS збігається з ключами визначень', () => {
     expect(SETTING_KEYS).toEqual(Object.keys(SETTING_DEFINITIONS));
-    expect(SETTING_KEYS).toHaveLength(18);
+    expect(SETTING_KEYS).toHaveLength(19);
   });
 
   test('усе заморожено', () => {
@@ -36,6 +36,7 @@ describe('SETTING_DEFINITIONS, SETTING_KEYS, DEFINITIONS_BY_CONSTANT', () => {
     expect(Object.isFrozen(SETTING_KEYS)).toBe(true);
     expect(Object.isFrozen(DEFINITIONS_BY_CONSTANT)).toBe(true);
     expect(Object.isFrozen(SETTING_DEFINITIONS.discountLevels.default)).toBe(true);
+    expect(Object.isFrozen(SETTING_DEFINITIONS.holidays.default)).toBe(true);
   });
 
   test('DEFINITIONS_BY_CONSTANT: ключі в CONSTANT_CASE, зберігають dbKey', () => {
@@ -85,9 +86,9 @@ const RULES = {
 };
 
 describe('правила валідації числових налаштувань', () => {
-  test('кожне налаштування, крім discountLevels, має тут правила', () => {
+  test('кожне налаштування, крім масивів (discountLevels, holidays), має тут правила', () => {
     expect(Object.keys(RULES).sort()).toEqual(
-      SETTING_KEYS.filter((key) => key !== 'discountLevels').sort()
+      SETTING_KEYS.filter((key) => !['discountLevels', 'holidays'].includes(key)).sort()
     );
   });
 
@@ -144,5 +145,38 @@ describe('discountLevels', () => {
 
   test('не масив -> повідомлення про тип', () => {
     expect(schema.safeParse(5).error.issues[0].message).toBe('Discount levels: must be an array');
+  });
+});
+
+describe('holidays', () => {
+  const { schema, default: defaultValue } = SETTING_DEFINITIONS.holidays;
+  const dates = (n) =>
+    Array.from({ length: n }, (_, i) =>
+      new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10)
+    );
+
+  test('за замовчуванням свят немає', () => {
+    expect(defaultValue).toEqual([]);
+  });
+
+  test.each([[[]], [['2026-01-01']], [['2026-12-25', '2026-01-01']], [dates(100)]])(
+    '%j -> валідно',
+    (value) => {
+      expect(schema.safeParse(value).success).toBe(true);
+    }
+  );
+
+  test.each([
+    ['не дата', ['01.01.2026'], 'Holidays: each date must be in YYYY-MM-DD format'],
+    ['неіснуюча дата', ['2026-02-30'], 'Holidays: each date must be in YYYY-MM-DD format'],
+    ['дата з часом', ['2026-01-01T00:00:00Z'], 'Holidays: each date must be in YYYY-MM-DD format'],
+    ['число замість дати', [20260101], 'Holidays: each date must be in YYYY-MM-DD format'],
+    ['не масив', '2026-01-01', 'Holidays: must be an array of dates'],
+    ['більше 100 дат', dates(101), 'Holidays: cannot exceed 100 dates'],
+    ['дублікати', ['2026-01-01', '2026-05-01', '2026-01-01'], 'Holidays must be unique'],
+  ])('%s -> помилка «%s»', (_name, value, message) => {
+    const result = schema.safeParse(value);
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe(message);
   });
 });

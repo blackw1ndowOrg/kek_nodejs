@@ -44,6 +44,7 @@ describe('Settings API (Supertest)', () => {
       ['post', `${BASE}/reload`],
       ['put', `${BASE}/TUITION_MONTHLY`],
       ['patch', `${BASE}/TUITION_MONTHLY`],
+      ['patch', `${BASE}/HOLIDAYS`],
     ])('%s %s: лише ADMIN, решта -> 403', async (method, url) => {
       for (const role of ['MANAGER', 'TEACHER', 'PARENT']) {
         const res = await request(app)
@@ -66,7 +67,8 @@ describe('Settings API (Supertest)', () => {
         WORKING_DAYS_PER_MONTH: 21,
         ATTENDANCE_RATE_PERCENT: 80,
       });
-      expect(Object.keys(res.body.settings)).toHaveLength(18);
+      expect(res.body.settings.HOLIDAYS).toEqual([]);
+      expect(Object.keys(res.body.settings)).toHaveLength(19);
     });
   });
 
@@ -117,7 +119,33 @@ describe('Settings API (Supertest)', () => {
       expect(res.body).toEqual({ key: 'DISCOUNT_LEVELS', value: [5, 15] });
     });
 
+    test('свята: список зберігається, і settingsService одразу бачить нові дати', async () => {
+      const holidays = ['2026-12-25', '2027-01-01'];
+      const res = await request(app)
+        [method](`${BASE}/holidays`)
+        .set('Authorization', ADMIN())
+        .send({ value: holidays });
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body).toEqual({ key: 'HOLIDAYS', value: holidays });
+      expect(settingsRepository.upsert).toHaveBeenCalledWith('holidays', holidays);
+      expect(settingsService.get('HOLIDAYS')).toEqual(holidays);
+    });
+
+    test('свята: порожній список дозволений (свят немає)', async () => {
+      const res = await request(app)
+        [method](`${BASE}/HOLIDAYS`)
+        .set('Authorization', ADMIN())
+        .send({ value: [] });
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.value).toEqual([]);
+    });
+
     test.each([
+      ['свята: дублікати', 'HOLIDAYS', { value: ['2026-12-25', '2026-12-25'] }],
+      ['свята: невалідна дата', 'HOLIDAYS', { value: ['25.12.2026'] }],
+      ['свята: неіснуюча дата', 'HOLIDAYS', { value: ['2026-02-29'] }],
+      ['свята: числа замість дат', 'HOLIDAYS', { value: [20261225] }],
+      ['свята: не масив', 'HOLIDAYS', { value: '2026-12-25' }],
       ['знижка більша за 100', 'YEARLY_DISCOUNT_PERCENT', { value: 101 }],
       ['тариф 0', 'TUITION_MONTHLY', { value: 0 }],
       ['дублікати рівнів', 'DISCOUNT_LEVELS', { value: [10, 10] }],

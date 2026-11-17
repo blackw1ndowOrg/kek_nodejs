@@ -32,19 +32,23 @@ describe('keySchema', () => {
 });
 
 describe('valueSchema', () => {
-  test.each([[0], [5], [1500000], [[1]], [[10, 20, 30]], [[0, 5]]])('%j -> валідно', (value) => {
-    expect(valueSchema.safeParse(value).success).toBe(true);
-  });
+  // Масив рядків і порожній масив проходять загальну схему: що саме допустимо (дати свят),
+  // перевіряє схема конкретного ключа в updateSettingSchema
+  test.each([[0], [5], [1500000], [[1]], [[10, 20, 30]], [[0, 5]], [[]], [['2026-01-01']]])(
+    '%j -> валідно',
+    (value) => {
+      expect(valueSchema.safeParse(value).success).toBe(true);
+    }
+  );
 
   test.each([
     ['від’ємне', -1],
     ['дробове', 1.5],
     ['рядок', '5'],
     ['null', null],
-    ['порожній масив', []],
     ['масив із від’ємним', [1, -1]],
     ['масив із дробовим', [1.5]],
-    ['масив рядків', ['1']],
+    ['масив із числом і рядком', [1, '1']],
     ['об’єкт', { a: 1 }],
   ])('%s -> помилка', (_name, value) => {
     expect(valueSchema.safeParse(value).success).toBe(false);
@@ -126,8 +130,42 @@ describe('updateSettingSchema', () => {
     expect(result.error.issues[0].message).toBe('Discount levels must be unique');
   });
 
+  test('свята: валідний список, зокрема порожній', () => {
+    expect(parse('HOLIDAYS', ['2026-01-01', '2026-08-24']).success).toBe(true);
+    expect(parse('holidays', []).success).toBe(true);
+  });
+
+  test('свята: невалідна дата — помилка з індексом у path', () => {
+    const result = parse('HOLIDAYS', ['2026-01-01', '2026-13-01']);
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0]).toMatchObject({
+      message: 'Holidays: each date must be in YYYY-MM-DD format',
+      path: ['body', 'value', 1],
+    });
+  });
+
+  test('свята: дублікати', () => {
+    const result = parse('HOLIDAYS', ['2026-01-01', '2026-01-01']);
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe('Holidays must be unique');
+  });
+
+  test('масив рядків у числовому ключі -> помилка', () => {
+    expect(parse('DISCOUNT_LEVELS', ['10']).success).toBe(false);
+    expect(parse('DISCOUNT_LEVELS', []).success).toBe(false);
+  });
+
   test('невідомий ключ пропускається (404 поверне сервіс)', () => {
     expect(parse('UNKNOWN_KEY', 5).success).toBe(true);
+    expect(parse('UNKNOWN_KEY', [5, 10]).success).toBe(true);
+  });
+
+  // Масив рядків і порожній масив дозволені лише ключам, що їх описують (holidays)
+  test.each([
+    ['масив рядків', ['2026-01-01']],
+    ['порожній масив', []],
+  ])('ключ без опису: %s -> помилка', (_name, value) => {
+    expect(parse('UNKNOWN_KEY', value).success).toBe(false);
   });
 
   test.each([
@@ -135,7 +173,7 @@ describe('updateSettingSchema', () => {
     ['зайве поле', { value: 5, extra: 1 }],
     ['value рядком', { value: '5' }],
     ['від’ємне value', { value: -1 }],
-    ['порожній масив', { value: [] }],
+    ['масив об’єктів', { value: [{}] }],
   ])('тіло: %s -> помилка', (_name, body) => {
     expect(updateSettingSchema.safeParse({ params: { key: 'UNKNOWN_KEY' }, body }).success).toBe(
       false
