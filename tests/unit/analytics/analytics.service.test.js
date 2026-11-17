@@ -7,6 +7,9 @@ const {
   DEFAULT_CLUB_TEACHERS_COUNT,
   DEFAULT_MANAGERS_COUNT,
   DEFAULT_TOTAL_ROOMS_COUNT,
+  DEFAULT_FORECAST_MONTHS,
+  FORECAST_AGES,
+  FORECAST_ASSUMPTIONS,
 } = require('../../../src/modules/analytics/analytics.service');
 const { NotFoundError, BadRequestError } = require('../../../src/errors/AppError');
 
@@ -665,6 +668,35 @@ describe('AnalyticsService', () => {
       expect(res.groups[0].expenses.uah).toBe(70000); // 0 + 20000 + 50000
     });
 
+    // Поведінку змінено відносно попередньої версії: раніше roomsRent садка обрізався до
+    // roomsCount × ROOM_MONTHLY_COST (20 × 50 000), і GET /profit розходився із сумою профітів груп
+    test('дорога кімната групи: roomsRent = оренда груп + кабінетів, профіт = сума груп − спільні', async () => {
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
+        {
+          id: 1,
+          name: 'Дорога кімната',
+          age: 3,
+          educatorId: 1,
+          assistantId: 2,
+          educator: { id: 1, isActive: true },
+          assistant: { id: 2, isActive: true },
+          room: { id: 1, monthlyCost: 100000000 }, // 1 000 000 грн — більше за весь фонд 20 кімнат
+          children: [],
+          _count: { children: 0 },
+        },
+      ]);
+      const res = await service.getTotalProfit();
+      const operating = 100000000 + 5 * 5000000; // кімната групи + 5 кабінетів гуртків
+      expect(res.expenses.operatingRoomsRent.kopiykas).toBe(operating);
+      expect(res.expenses.idleRoomsRent.kopiykas).toBe(0);
+      expect(res.expenses.roomsRent.kopiykas).toBe(operating);
+      expect(res.expenses.roomsRent.kopiykas).toBeGreaterThan(20 * 5000000);
+      expect(res.rooms.cost.total).toEqual(res.expenses.roomsRent);
+
+      const shared = 5 * 4000000 + 8000000 + 5 * 5000000; // гуртки, менеджер, кабінети
+      expect(res.profit.kopiykas).toBe(res.groups[0].profit.kopiykas - shared);
+    });
+
     test('група без помічника: у загальних витратах садка зарплата помічника = 0', async () => {
       mockRepo.findAllActiveChildren.mockResolvedValue([{ id: 1, discountPercent: 0, groupId: 1 }]);
       mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([
@@ -1097,6 +1129,205 @@ describe('AnalyticsService', () => {
       test('поточний момент за замовчуванням — new Date()', () => {
         expect(new AnalyticsService(mockRepo, mockSettings).now()).toBeInstanceOf(Date);
       });
+    });
+  });
+
+  describe('rates і resolveAttendanceRate', () => {
+    test('без запиту відвідуваність — з налаштувань', () => {
+      expect(service.resolveAttendanceRate()).toBe(0.8);
+    });
+
+    test('річна знижка за замовчуванням 12%, якщо в налаштуваннях її немає', () => {
+      mockSettings.get.mockImplementation((key) =>
+        key === 'YEARLY_DISCOUNT_PERCENT' ? undefined : DEFAULT_SETTINGS[key]
+      );
+      expect(service.rates().yearlyDiscountPercent).toBe(12);
+    });
+  });
+
+  describe('getCalendarForecast: прогноз по місяцях у розрізі віку', () => {
+    const kid = (discountPercent = 0) => ({ discountPercent, paymentPlan: 'MONTHLY' });
+    const group = (id, age, childrenCount, extra = {}) => ({
+      id,
+      name: `Група ${id}`,
+      age,
+      educatorId: id * 10,
+      assistantId: id * 10 + 1,
+      educator: { id: id * 10, isActive: true },
+      assistant: { id: id * 10 + 1, isActive: true },
+      room: { id, monthlyCost: 5000000 },
+      children: Array.from({ length: childrenCount }, () => kid()),
+      _count: { children: childrenCount },
+      ...extra,
+    });
+    // Два групи 3-річних, одна 5-річних, 2- і 4-річних немає
+    const GROUPS = [group(1, 3, 14), group(2, 3, 5), group(3, 5, 10)];
+    const HOLIDAYS = ['2026-12-25', '2027-01-01'];
+    // 10.11.2026 за Києвом
+    const NOW = new Date('2026-11-10T10:00:00Z');
+
+    const createCalendarService = (settingsOverrides = {}) => {
+      const settings = { ...DEFAULT_SETTINGS, HOLIDAYS, ...settingsOverrides };
+      const repo = {
+        ...mockRepo,
+        findAllGroupsWithActiveChildren: jest.fn().mockResolvedValue(GROUPS),
+        countActiveStaffByType: jest.fn().mockResolvedValue({
+          CLUB_TEACHER: 5,
+          MANAGER: 1,
+          EDUCATOR: 3,
+          ASSISTANT: 4,
+        }),
+      };
+      return new AnalyticsService(repo, { get: jest.fn((key) => settings[key]) }, () => NOW);
+    };
+
+    const sumAges = (month, field) => month.ages.reduce((acc, row) => acc + row[field].kopiykas, 0);
+
+    test('за замовчуванням: 12 місяців із поточного за Києвом', async () => {
+      const res = await createCalendarService().getCalendarForecast();
+      expect(DEFAULT_FORECAST_MONTHS).toBe(12);
+      expect(res).toMatchObject({ from: '2026-11', to: '2027-10', monthsCount: 12 });
+      expect(res.months.map((m) => m.month)).toEqual([
+        '2026-11',
+        '2026-12',
+        '2027-01',
+        '2027-02',
+        '2027-03',
+        '2027-04',
+        '2027-05',
+        '2027-06',
+        '2027-07',
+        '2027-08',
+        '2027-09',
+        '2027-10',
+      ]);
+      expect(res.attendanceRate).toBe(0.8);
+      expect(res.assumptions).toBe(FORECAST_ASSUMPTIONS);
+    });
+
+    test('рядок для кожного віку 2–5, зокрема без груп', async () => {
+      const res = await createCalendarService().getCalendarForecast({ from: '2026-11', months: 1 });
+      const [month] = res.months;
+      expect(FORECAST_AGES).toEqual([2, 3, 4, 5]);
+      expect(month.ages.map((row) => row.age)).toEqual([2, 3, 4, 5]);
+      expect(month.ages[0]).toMatchObject({ age: 2, groupsCount: 0, childrenCount: 0 });
+      expect(month.ages[0].profit.kopiykas).toBe(0);
+      expect(month.ages[1]).toMatchObject({ age: 3, groupsCount: 2, childrenCount: 19 });
+      expect(month.ages[3]).toMatchObject({ age: 5, groupsCount: 1, childrenCount: 10 });
+      expect(Object.keys(month.ages[1])).toEqual([
+        'age',
+        'groupsCount',
+        'childrenCount',
+        'tuition',
+        'meal',
+        'income',
+        'educatorSalary',
+        'assistantSalary',
+        'roomsRent',
+        'expenses',
+        'profit',
+      ]);
+    });
+
+    test('профіт віку = сума профітів його груп за GET /groups/:id/profit', async () => {
+      const service = createCalendarService();
+      const res = await service.getCalendarForecast({ from: '2026-11', months: 1 });
+      service.repository.findGroupById = jest.fn((id) =>
+        Promise.resolve(GROUPS.find((g) => g.id === id))
+      );
+      const [g1, g2] = await Promise.all([service.getGroupProfit(1), service.getGroupProfit(2)]);
+      expect(res.months[0].ages[1].profit.kopiykas).toBe(g1.profit.kopiykas + g2.profit.kopiykas);
+      expect(res.months[0].ages[1].meal.kopiykas).toBe(
+        g1.mealIncome.kopiykas + g2.mealIncome.kopiykas
+      );
+    });
+
+    test('інваріант: сума профітів віків − спільні витрати = профіт садка, щомісяця', async () => {
+      const res = await createCalendarService().getCalendarForecast({ from: '2026-11', months: 3 });
+      for (const month of res.months) {
+        expect(sumAges(month, 'profit') - month.shared.total.kopiykas).toBe(
+          month.total.profit.kopiykas
+        );
+        expect(sumAges(month, 'income')).toBe(month.total.income.kopiykas);
+        expect(sumAges(month, 'expenses') + month.shared.total.kopiykas).toBe(
+          month.total.expenses.kopiykas
+        );
+      }
+      const profits = res.months.reduce((acc, m) => acc + m.total.profit.kopiykas, 0);
+      expect(res.summary.profit.kopiykas).toBe(profits);
+    });
+
+    test('спільні витрати: гуртки, їхні кабінети, менеджер, помічник без групи, простій', async () => {
+      const res = await createCalendarService().getCalendarForecast({ from: '2026-11', months: 1 });
+      const { shared } = res.months[0];
+      expect(shared.clubTeachersSalary.kopiykas).toBe(5 * 4000000);
+      expect(shared.clubRoomsRent.kopiykas).toBe(5 * 5000000);
+      expect(shared.managerSalary.kopiykas).toBe(8000000);
+      expect(shared.unassignedAssistantsSalary.kopiykas).toBe(2000000); // 4 у штаті, 3 у групах
+      expect(shared.idleRoomsRent.kopiykas).toBe(12 * 5000000); // 20 − 3 групи − 5 кабінетів
+      expect(shared.total.kopiykas).toBe(20000000 + 25000000 + 8000000 + 2000000 + 60000000);
+    });
+
+    test('місяць із 21 робочим днем збігається з GET /profit', async () => {
+      const service = createCalendarService();
+      const res = await service.getCalendarForecast({ from: '2026-11', months: 1 });
+      const total = await service.getTotalProfit();
+      expect(res.months[0].workingDays).toBe(21);
+      expect(res.months[0].total.profit).toEqual(total.profit);
+      expect(res.months[0].total.income).toEqual(total.income.total);
+      expect(res.months[0].total.expenses).toEqual(total.expenses.total);
+    });
+
+    test('різні робочі дні — різне харчування; навчання й зарплати сталі', async () => {
+      const res = await createCalendarService().getCalendarForecast({ from: '2026-11', months: 3 });
+      const [nov, dec, jan] = res.months;
+      expect([nov.workingDays, dec.workingDays, jan.workingDays]).toEqual([21, 22, 20]);
+      expect(sumAges(dec, 'meal')).toBeGreaterThan(sumAges(nov, 'meal'));
+      expect(sumAges(jan, 'meal')).toBeLessThan(sumAges(nov, 'meal'));
+      expect(sumAges(dec, 'tuition')).toBe(sumAges(nov, 'tuition'));
+      expect(sumAges(dec, 'educatorSalary')).toBe(sumAges(nov, 'educatorSalary'));
+      // 3 роки: 400 грн × 22 × 0,8 = 7 040 грн на дитину × 19
+      expect(dec.ages[1].meal.kopiykas).toBe(19 * Math.round(40000 * 22 * 0.8));
+    });
+
+    test('свята беруться з налаштувань: нове свято зменшує робочі дні', async () => {
+      const before = await createCalendarService({ HOLIDAYS: [] }).getCalendarForecast({
+        from: '2026-12',
+        months: 1,
+      });
+      const after = await createCalendarService({ HOLIDAYS: ['2026-12-25'] }).getCalendarForecast({
+        from: '2026-12',
+        months: 1,
+      });
+      expect(before.months[0].workingDays).toBe(23);
+      expect(after.months[0].workingDays).toBe(22);
+    });
+
+    test('рік без свят у налаштуваннях — окреме припущення у відповіді', async () => {
+      const res = await createCalendarService().getCalendarForecast({ from: '2027-12', months: 2 });
+      expect(res.assumptions).toEqual([
+        ...FORECAST_ASSUMPTIONS,
+        'Свят на 2028 рік у налаштуваннях немає: робочі дні — лише Пн–Пт',
+      ]);
+      expect(res.months[1]).toMatchObject({ month: '2028-01', workingDays: 21 });
+    });
+
+    test('attendanceRate із запиту перекриває налаштування', async () => {
+      const res = await createCalendarService().getCalendarForecast({
+        from: '2026-11',
+        months: 1,
+        attendanceRate: 1,
+      });
+      expect(res.attendanceRate).toBe(1);
+      expect(res.months[0].ages[3].meal.kopiykas).toBe(10 * 60000 * 21);
+    });
+
+    test('садок без груп: вікові рядки нульові, профіт = −спільні витрати', async () => {
+      const service = createCalendarService();
+      service.repository.findAllGroupsWithActiveChildren.mockResolvedValue([]);
+      const res = await service.getCalendarForecast({ from: '2026-11', months: 1 });
+      expect(res.months[0].ages.every((row) => row.groupsCount === 0)).toBe(true);
+      expect(res.months[0].total.profit.kopiykas).toBe(-res.months[0].shared.total.kopiykas);
     });
   });
 

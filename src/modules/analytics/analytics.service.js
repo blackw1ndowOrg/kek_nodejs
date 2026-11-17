@@ -1,21 +1,50 @@
 const { NotFoundError, BadRequestError } = require('../../errors/AppError');
-const { mealMonthly, calculateChildMonthlyTuition } = require('../../domain/pricing');
 const {
-  educatorSalary,
-  assistantSalary,
-  clubTeacherSalary,
-  managerSalary,
-} = require('../../domain/salary');
+  groupMonthlyProfit,
+  sharedMonthlyCosts,
+  sumGroupProfits,
+  DEFAULT_CLUB_TEACHERS_COUNT,
+  DEFAULT_MANAGERS_COUNT,
+} = require('../../domain/profit');
 const { optimizeKindergartenCapacity, resolveWorkingDays } = require('../../domain/forecast');
-const { currentMonth } = require('../../domain/calendar');
+const { currentMonth, monthSequence, workingDaysInMonth } = require('../../domain/calendar');
+const { MIN_AGE, MAX_AGE } = require('../../domain/pricing');
 const { toMoney } = require('../../domain/money');
 const { settingsService } = require('../settings/settings.service');
 const { analyticsRepository } = require('./analytics.repository');
 
-const DEFAULT_CLUB_TEACHERS_COUNT = 5;
-const DEFAULT_MANAGERS_COUNT = 1;
 const DEFAULT_TOTAL_ROOMS_COUNT = 20;
-const DEFAULT_CLUB_ROOMS_COUNT = 5;
+const DEFAULT_FORECAST_MONTHS = 12;
+
+/** Вікові рядки прогнозу: 2, 3, 4, 5 років */
+const FORECAST_AGES = Object.freeze(
+  Array.from({ length: MAX_AGE - MIN_AGE + 1 }, (_, i) => MIN_AGE + i)
+);
+
+/** Припущення прогнозу по місяцях, доки BA не вирішить інакше */
+const FORECAST_ASSUMPTIONS = Object.freeze([
+  'Склад груп і вік дітей — як зараз: перехід дітей у старші групи 1 вересня не моделюється',
+  'Літньої перерви немає: садок працює всі місяці',
+  'Спільні витрати (гуртки, менеджер, помічники без групи, простій кімнат) між віками не діляться',
+  'Навчання й зарплати однакові щомісяця; змінюється лише харчування — за робочими днями місяця',
+]);
+
+/**
+ * Припущення прогнозу: базові + рядок про роки періоду, для яких у HOLIDAYS немає жодного свята
+ * (список свят ведуть на рік-два вперед, тож далі календар рахує лише Пн–Пт)
+ */
+function forecastAssumptions(months, holidays) {
+  const knownYears = new Set(holidays.map((date) => date.slice(0, 4)));
+  const missingYears = [...new Set(months.map((month) => month.slice(0, 4)))].filter(
+    (year) => !knownYears.has(year)
+  );
+  if (missingYears.length === 0) return FORECAST_ASSUMPTIONS;
+  const label = missingYears.length === 1 ? 'рік' : 'роки';
+  return [
+    ...FORECAST_ASSUMPTIONS,
+    `Свят на ${missingYears.join(', ')} ${label} у налаштуваннях немає: робочі дні — лише Пн–Пт`,
+  ];
+}
 
 function isStaffActive(staffRelation, staffId) {
   if (staffId === null || staffRelation === null) {
@@ -56,6 +85,60 @@ class AnalyticsService {
     return this.settings.get('ATTENDANCE_RATE_PERCENT') / 100;
   }
 
+  /** Ставки з налаштувань для формул профіту (src/domain/profit.js) */
+  rates() {
+    return {
+      tuition: this.settings.get('TUITION_MONTHLY'),
+      discountLevels: this.settings.get('DISCOUNT_LEVELS'),
+      yearlyDiscountPercent: this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12,
+      educatorPerChild: this.settings.get('EDUCATOR_PER_CHILD'),
+      educatorExtraPay: this.settings.get('EDUCATOR_EXTRA_PAY'),
+      assistantSalary: this.settings.get('ASSISTANT_SALARY'),
+      assistantExtraPay: this.settings.get('ASSISTANT_EXTRA_PAY'),
+      threshold: this.settings.get('GROUP_EXTRA_PAY_THRESHOLD'),
+      clubTeacherSalary: this.settings.get('CLUB_TEACHER_SALARY'),
+      managerSalary: this.settings.get('MANAGER_SALARY'),
+      roomMonthlyCost: this.settings.get('ROOM_MONTHLY_COST'),
+      roomsCount: this.settings.get('DEFAULT_ROOMS_COUNT'),
+      mealBasePerDay: this.settings.get('MEAL_BASE_PER_DAY'),
+      mealPerExtraYear: this.settings.get('MEAL_PER_EXTRA_YEAR'),
+    };
+  }
+
+  /** Група з бази -> вхід groupMonthlyProfit */
+  toProfitInput(group, rates) {
+    const children = group.children || [];
+    return {
+      age: group.age,
+      children,
+      childrenCount: group._count?.children ?? children.length,
+      hasEducator: isStaffActive(group.educator, group.educatorId),
+      hasAssistant: isStaffActive(group.assistant, group.assistantId),
+      roomRent: group.room ? group.room.monthlyCost : rates.roomMonthlyCost,
+    };
+  }
+
+  /**
+   * Профіти всіх груп і спільні витрати садка за місяць (у копійках).
+   * Одна основа для GET /profit і POST /forecast/calendar.
+   */
+  async loadKindergarten(rates) {
+    const groups = await this.repository.findAllGroupsWithActiveChildren();
+    const staffCounts = await this.repository.countActiveStaffByType();
+    const inputs = groups.map((group) => this.toProfitInput(group, rates));
+    const shared = sharedMonthlyCosts(
+      {
+        groupsCount: groups.length,
+        groupRoomsRent: inputs.reduce((sum, input) => sum + input.roomRent, 0),
+        assignedEducators: inputs.filter((input) => input.hasEducator).length,
+        assignedAssistants: inputs.filter((input) => input.hasAssistant).length,
+        staffCounts,
+      },
+      rates
+    );
+    return { groups, inputs, shared };
+  }
+
   /**
    * Розрахунок профіту окремої групи:
    * - Дохід: сума щомісячної оплати за навчання та харчування за віком групи для всіх активних дітей
@@ -76,82 +159,41 @@ class AnalyticsService {
       throw new NotFoundError('Групу не знайдено');
     }
 
-    const attendanceRate = this.resolveAttendanceRate(query);
-    const tuition = this.settings.get('TUITION_MONTHLY');
-    const discountLevels = this.settings.get('DISCOUNT_LEVELS');
-    const yearlyDiscountPercent = this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12;
-    const educatorRate = this.settings.get('EDUCATOR_PER_CHILD');
-    const educatorExtra = this.settings.get('EDUCATOR_EXTRA_PAY');
-    const assistantBase = this.settings.get('ASSISTANT_SALARY');
-    const assistantExtra = this.settings.get('ASSISTANT_EXTRA_PAY');
-    const threshold = this.settings.get('GROUP_EXTRA_PAY_THRESHOLD');
-    const defaultRoomCost = this.settings.get('ROOM_MONTHLY_COST');
-    const mealBase = this.settings.get('MEAL_BASE_PER_DAY');
-    const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
-    const workingDays = this.settings.get('WORKING_DAYS_PER_MONTH');
-
-    const activeChildren = group.children || [];
-    const childrenCount = group._count?.children ?? activeChildren.length;
-
-    let tuitionIncome = 0;
-    for (const child of activeChildren) {
-      tuitionIncome += calculateChildMonthlyTuition(
-        child,
-        tuition,
-        discountLevels,
-        yearlyDiscountPercent
-      );
-    }
-    const fullMonthMeal = group.age ? mealMonthly(group.age, workingDays, mealBase, mealExtra) : 0;
-    const mealPerChild = Math.round(fullMonthMeal * attendanceRate);
-    const mealIncome = childrenCount * mealPerChild;
-    const totalIncome = tuitionIncome + mealIncome;
-
-    const hasEducator = isStaffActive(group.educator, group.educatorId);
-    const hasAssistant = isStaffActive(group.assistant, group.assistantId);
-
-    const educator = hasEducator
-      ? educatorSalary(childrenCount, educatorRate, educatorExtra, threshold)
-      : 0;
-    const assistant = hasAssistant
-      ? assistantSalary(childrenCount, assistantBase, assistantExtra, threshold)
-      : 0;
-    const roomCost = group.room ? group.room.monthlyCost : defaultRoomCost;
-
-    const totalExpenses = educator + assistant + roomCost;
-    const profit = totalIncome - totalExpenses;
+    const rates = this.rates();
+    const result = groupMonthlyProfit(this.toProfitInput(group, rates), rates, {
+      workingDays: this.settings.get('WORKING_DAYS_PER_MONTH'),
+      attendanceRate: this.resolveAttendanceRate(query),
+    });
 
     const incomeBreakdown = {
-      tuition: toMoney(tuitionIncome),
-      meal: toMoney(mealIncome),
-      total: toMoney(totalIncome),
+      tuition: toMoney(result.tuition),
+      meal: toMoney(result.meal),
+      total: toMoney(result.income),
     };
 
     const expensesBreakdown = {
-      educatorSalary: toMoney(educator),
-      assistantSalary: toMoney(assistant),
-      roomRent: toMoney(roomCost),
-      total: toMoney(totalExpenses),
+      educatorSalary: toMoney(result.educatorSalary),
+      assistantSalary: toMoney(result.assistantSalary),
+      roomRent: toMoney(result.roomRent),
+      total: toMoney(result.expenses),
     };
-
-    const profitMoney = toMoney(profit);
 
     return {
       groupId: group.id,
       groupName: group.name,
       age: group.age,
-      childrenCount,
+      childrenCount: result.childrenCount,
       room: {
         id: group.room ? group.room.id : group.roomId,
         name: group.room ? group.room.name : null,
-        cost: toMoney(roomCost),
+        cost: toMoney(result.roomRent),
       },
-      tuitionIncome: toMoney(tuitionIncome),
-      mealIncome: toMoney(mealIncome),
-      totalIncome: toMoney(totalIncome),
+      tuitionIncome: toMoney(result.tuition),
+      mealIncome: toMoney(result.meal),
+      totalIncome: toMoney(result.income),
       income: incomeBreakdown,
       expenses: expensesBreakdown,
-      profit: profitMoney,
+      profit: toMoney(result.profit),
       breakdown: {
         income: incomeBreakdown,
         expenses: expensesBreakdown,
@@ -162,203 +204,184 @@ class AnalyticsService {
   /**
    * Розрахунок загального профіту всього садка:
    * - Доходи: сума навчання та харчування дітей, зарахованих до груп
-   * - Витрати: фактичні зарплати вихователів + помічників + викладачі гуртків
-   *   + менеджери + оренда всіх 20 кімнат (з розмежуванням на операційні та простій)
-   * - Чистий профіт: загальний дохід - загальні витрати
+   * - Витрати: витрати груп (вихователі, помічники, кімнати груп) + спільні витрати
+   *   (викладачі гуртків, менеджер, помічники без групи, кабінети гуртків і простій кімнат)
+   * - Чистий профіт = сума профітів груп − спільні витрати
    *
    * @param {Object} [query={}]
    */
   async getTotalProfit(query = {}) {
-    const attendanceRate = this.resolveAttendanceRate(query);
-    const tuition = this.settings.get('TUITION_MONTHLY');
-    const discountLevels = this.settings.get('DISCOUNT_LEVELS');
-    const yearlyDiscountPercent = this.settings.get('YEARLY_DISCOUNT_PERCENT') ?? 12;
-    const educatorRate = this.settings.get('EDUCATOR_PER_CHILD');
-    const educatorExtra = this.settings.get('EDUCATOR_EXTRA_PAY');
-    const assistantBase = this.settings.get('ASSISTANT_SALARY');
-    const assistantExtra = this.settings.get('ASSISTANT_EXTRA_PAY');
-    const threshold = this.settings.get('GROUP_EXTRA_PAY_THRESHOLD');
-    const clubSalary = this.settings.get('CLUB_TEACHER_SALARY');
-    const mgrSalary = this.settings.get('MANAGER_SALARY');
-    const roomCostSetting = this.settings.get('ROOM_MONTHLY_COST');
-    const roomsCountSetting = this.settings.get('DEFAULT_ROOMS_COUNT');
-    const mealBase = this.settings.get('MEAL_BASE_PER_DAY');
-    const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
-    const workingDays = this.settings.get('WORKING_DAYS_PER_MONTH');
-    const defaultRoomCost = roomCostSetting;
-    const roomsCount = roomsCountSetting;
+    const rates = this.rates();
+    const period = {
+      workingDays: this.settings.get('WORKING_DAYS_PER_MONTH'),
+      attendanceRate: this.resolveAttendanceRate(query),
+    };
+    const { groups, inputs, shared } = await this.loadKindergarten(rates);
+    const results = inputs.map((input) => groupMonthlyProfit(input, rates, period));
+    const sum = sumGroupProfits(results);
 
-    const groups = await this.repository.findAllGroupsWithActiveChildren();
-    let totalEducatorsSalary = 0;
-    let totalAssistantsSalary = 0;
-    let groupsTuitionIncome = 0;
-    let totalMealIncome = 0;
-    let totalOccupiedGroupRoomsRent = 0;
-    let totalAssignedChildrenCount = 0;
-    let assignedActiveEducatorsCount = 0;
-    let assignedActiveAssistantsCount = 0;
+    const assistantsSalary = sum.assistantSalary + shared.unassignedAssistantsSalary;
+    const staffSalaries =
+      sum.educatorSalary + assistantsSalary + shared.clubTeachersSalary + shared.managerSalary;
+    const roomsRent = shared.operatingRoomsRent + shared.idleRoomsRent;
+    const totalExpenses = sum.expenses + shared.total;
+    const totalProfit = sum.profit - shared.total;
+    const profitMoney = toMoney(totalProfit);
 
-    const groupsBreakdown = groups.map((g) => {
-      const activeGroupChildren = g.children || [];
-      const count = g._count?.children ?? activeGroupChildren.length;
-      totalAssignedChildrenCount += count;
-      const hasEducator = isStaffActive(g.educator, g.educatorId);
-      const hasAssistant = isStaffActive(g.assistant, g.assistantId);
+    const incomeBreakdown = {
+      tuition: toMoney(sum.tuition),
+      meal: toMoney(sum.meal),
+      total: toMoney(sum.income),
+    };
 
-      if (hasEducator) assignedActiveEducatorsCount++;
-      if (hasAssistant) assignedActiveAssistantsCount++;
+    const expensesBreakdown = {
+      educatorsSalary: toMoney(sum.educatorSalary),
+      assistantsSalary: toMoney(assistantsSalary),
+      clubTeachersSalary: toMoney(shared.clubTeachersSalary),
+      managerSalary: toMoney(shared.managerSalary),
+      staffSalaries: toMoney(staffSalaries),
+      roomsRent: toMoney(roomsRent),
+      operatingRoomsRent: toMoney(shared.operatingRoomsRent),
+      idleRoomsRent: toMoney(shared.idleRoomsRent),
+      total: toMoney(totalExpenses),
+    };
 
-      const educator = hasEducator
-        ? educatorSalary(count, educatorRate, educatorExtra, threshold)
-        : 0;
-      const assistant = hasAssistant
-        ? assistantSalary(count, assistantBase, assistantExtra, threshold)
-        : 0;
-      const roomCost = g.room ? g.room.monthlyCost : defaultRoomCost;
-
-      totalEducatorsSalary += educator;
-      totalAssistantsSalary += assistant;
-      totalOccupiedGroupRoomsRent += roomCost;
-
-      let gTuition = 0;
-      for (const child of activeGroupChildren) {
-        gTuition += calculateChildMonthlyTuition(
-          child,
-          tuition,
-          discountLevels,
-          yearlyDiscountPercent
-        );
-      }
-      const fullMonthMeal = g.age ? mealMonthly(g.age, workingDays, mealBase, mealExtra) : 0;
-      const gMealPerChild = Math.round(fullMonthMeal * attendanceRate);
-      const gMeal = count * gMealPerChild;
-      const gTotalIncome = gTuition + gMeal;
-      const gExpenses = educator + assistant + roomCost;
-
-      groupsTuitionIncome += gTuition;
-      totalMealIncome += gMeal;
-
+    const groupsBreakdown = groups.map((g, index) => {
+      const result = results[index];
       return {
         groupId: g.id,
         groupName: g.name,
         age: g.age,
-        childrenCount: count,
-        tuitionIncome: toMoney(gTuition),
-        mealIncome: toMoney(gMeal),
-        totalIncome: toMoney(gTotalIncome),
-        income: toMoney(gTotalIncome),
-        expenses: toMoney(gExpenses),
-        profit: toMoney(gTotalIncome - gExpenses),
+        childrenCount: result.childrenCount,
+        tuitionIncome: toMoney(result.tuition),
+        mealIncome: toMoney(result.meal),
+        totalIncome: toMoney(result.income),
+        income: toMoney(result.income),
+        expenses: toMoney(result.expenses),
+        profit: toMoney(result.profit),
       };
     });
 
-    const totalTuitionIncome = groupsTuitionIncome;
-    const totalIncome = totalTuitionIncome + totalMealIncome;
-
-    let clubTeachersCount = DEFAULT_CLUB_TEACHERS_COUNT;
-    let managersCount = DEFAULT_MANAGERS_COUNT;
-    let educatorsCount = assignedActiveEducatorsCount;
-    let assistantsCount = assignedActiveAssistantsCount;
-
-    const staffCounts = await this.repository.countActiveStaffByType();
-    if (staffCounts) {
-      clubTeachersCount = staffCounts.CLUB_TEACHER ?? clubTeachersCount;
-      managersCount = staffCounts.MANAGER ?? managersCount;
-      educatorsCount = Math.max(
-        assignedActiveEducatorsCount,
-        staffCounts.EDUCATOR ?? educatorsCount
-      );
-      assistantsCount = Math.max(
-        assignedActiveAssistantsCount,
-        staffCounts.ASSISTANT ?? assistantsCount
-      );
-    }
-
-    const freeAssistantsCount = Math.max(0, assistantsCount - assignedActiveAssistantsCount);
-    if (freeAssistantsCount > 0) {
-      totalAssistantsSalary += freeAssistantsCount * assistantBase;
-    }
-
-    const totalClubTeachersSalary = clubTeachersCount * clubTeacherSalary(clubSalary);
-    const totalManagerSalary = managersCount * managerSalary(mgrSalary);
-    const totalStaffSalaries =
-      totalEducatorsSalary + totalAssistantsSalary + totalClubTeachersSalary + totalManagerSalary;
-
-    const occupiedGroupRooms = groups.length;
-    const occupiedClubRooms = Math.min(
-      DEFAULT_CLUB_ROOMS_COUNT,
-      Math.max(0, roomsCount - occupiedGroupRooms)
-    );
-    const occupiedRoomsCount = occupiedGroupRooms + occupiedClubRooms;
-    const operatingRoomsRent = totalOccupiedGroupRoomsRent + occupiedClubRooms * defaultRoomCost;
-    const totalRoomsRent = roomsCount * defaultRoomCost;
-    const vacantRoomsCount = Math.max(0, roomsCount - occupiedRoomsCount);
-    const idleRoomsRent = Math.max(0, totalRoomsRent - operatingRoomsRent);
-
-    const totalExpenses = totalStaffSalaries + totalRoomsRent;
-    const totalProfit = totalIncome - totalExpenses;
-    const profitMoney = toMoney(totalProfit);
-
-    const incomeBreakdown = {
-      tuition: toMoney(totalTuitionIncome),
-      meal: toMoney(totalMealIncome),
-      total: toMoney(totalIncome),
-    };
-
-    const expensesBreakdown = {
-      educatorsSalary: toMoney(totalEducatorsSalary),
-      assistantsSalary: toMoney(totalAssistantsSalary),
-      clubTeachersSalary: toMoney(totalClubTeachersSalary),
-      managerSalary: toMoney(totalManagerSalary),
-      staffSalaries: toMoney(totalStaffSalaries),
-      roomsRent: toMoney(totalRoomsRent),
-      operatingRoomsRent: toMoney(operatingRoomsRent),
-      idleRoomsRent: toMoney(idleRoomsRent),
-      total: toMoney(totalExpenses),
-    };
-
     return {
-      activeChildrenCount: totalAssignedChildrenCount,
-      assignedChildrenCount: totalAssignedChildrenCount,
+      activeChildrenCount: sum.childrenCount,
+      assignedChildrenCount: sum.childrenCount,
       groupsCount: groups.length,
-      roomsCount,
-      educatorsCount,
-      assistantsCount,
-      clubTeachersCount,
-      managersCount,
+      roomsCount: rates.roomsCount,
+      educatorsCount: shared.educatorsCount,
+      assistantsCount: shared.assistantsCount,
+      clubTeachersCount: shared.clubTeachersCount,
+      managersCount: shared.managersCount,
       income: incomeBreakdown,
       expenses: expensesBreakdown,
       profit: profitMoney,
       netProfit: profitMoney,
       breakdown: {
-        income: {
-          tuition: toMoney(totalTuitionIncome),
-          meal: toMoney(totalMealIncome),
-          total: toMoney(totalIncome),
-        },
-        expenses: {
-          educatorsSalary: toMoney(totalEducatorsSalary),
-          assistantsSalary: toMoney(totalAssistantsSalary),
-          clubTeachersSalary: toMoney(totalClubTeachersSalary),
-          managerSalary: toMoney(totalManagerSalary),
-          staffSalaries: toMoney(totalStaffSalaries),
-          roomsRent: toMoney(totalRoomsRent),
-          operatingRoomsRent: toMoney(operatingRoomsRent),
-          idleRoomsRent: toMoney(idleRoomsRent),
-          total: toMoney(totalExpenses),
-        },
+        income: { ...incomeBreakdown },
+        expenses: { ...expensesBreakdown },
       },
       rooms: {
-        total: roomsCount,
-        occupied: occupiedRoomsCount,
-        vacant: vacantRoomsCount,
+        total: rates.roomsCount,
+        occupied: groups.length + shared.clubRooms,
+        vacant: shared.vacantRooms,
         cost: {
-          total: toMoney(totalRoomsRent),
-          operating: toMoney(operatingRoomsRent),
-          idle: toMoney(idleRoomsRent),
+          total: toMoney(roomsRent),
+          operating: toMoney(shared.operatingRoomsRent),
+          idle: toMoney(shared.idleRoomsRent),
         },
       },
       groups: groupsBreakdown,
+    };
+  }
+
+  /**
+   * Прогноз профіту по місяцях у розрізі віку (2–5 років).
+   *
+   * Для кожного місяця з from (за замовчуванням поточний за Києвом) на months місяців:
+   * - рядок для кожного віку: сума groupMonthlyProfit усіх груп цього віку
+   *   (та сама формула, що й GET /groups/:id/profit), харчування — за робочими днями місяця;
+   * - спільні витрати (гуртки, менеджер, помічники без групи, простій кімнат) — не діляться між віками;
+   * - підсумок садка: сума профітів віків − спільні витрати.
+   *
+   * Припущення до рішення BA: склад груп і вік дітей — як зараз (без переходу 1 вересня),
+   * без літньої перерви; спільні витрати між віками не діляться.
+   *
+   * @param {{ from?: string, months?: number, attendanceRate?: number }} [params={}]
+   */
+  async getCalendarForecast({ from, months = DEFAULT_FORECAST_MONTHS, attendanceRate } = {}) {
+    const rates = this.rates();
+    const rate = this.resolveAttendanceRate({ attendanceRate });
+    const holidays = this.settings.get('HOLIDAYS');
+    const sequence = monthSequence(from ?? currentMonth(this.now()), months);
+    const { groups, inputs, shared } = await this.loadKindergarten(rates);
+
+    const sharedMoney = {
+      clubTeachersSalary: toMoney(shared.clubTeachersSalary),
+      clubRoomsRent: toMoney(shared.clubRoomsRent),
+      managerSalary: toMoney(shared.managerSalary),
+      unassignedAssistantsSalary: toMoney(shared.unassignedAssistantsSalary),
+      idleRoomsRent: toMoney(shared.idleRoomsRent),
+      total: toMoney(shared.total),
+    };
+
+    let periodIncome = 0;
+    let periodExpenses = 0;
+    let periodProfit = 0;
+
+    const monthsReport = sequence.map((month) => {
+      const workingDays = workingDaysInMonth(month, holidays);
+      const period = { workingDays, attendanceRate: rate };
+      const results = inputs.map((input) => groupMonthlyProfit(input, rates, period));
+
+      const ages = FORECAST_AGES.map((age) => {
+        const row = sumGroupProfits(results.filter((_, index) => groups[index].age === age));
+        return {
+          age,
+          groupsCount: row.groupsCount,
+          childrenCount: row.childrenCount,
+          tuition: toMoney(row.tuition),
+          meal: toMoney(row.meal),
+          income: toMoney(row.income),
+          educatorSalary: toMoney(row.educatorSalary),
+          assistantSalary: toMoney(row.assistantSalary),
+          roomsRent: toMoney(row.roomRent),
+          expenses: toMoney(row.expenses),
+          profit: toMoney(row.profit),
+        };
+      });
+
+      const all = sumGroupProfits(results);
+      const expenses = all.expenses + shared.total;
+      const profit = all.profit - shared.total;
+      periodIncome += all.income;
+      periodExpenses += expenses;
+      periodProfit += profit;
+
+      return {
+        month,
+        workingDays,
+        ages,
+        shared: sharedMoney,
+        total: {
+          childrenCount: all.childrenCount,
+          income: toMoney(all.income),
+          expenses: toMoney(expenses),
+          profit: toMoney(profit),
+        },
+      };
+    });
+
+    return {
+      from: sequence[0],
+      to: sequence[sequence.length - 1],
+      monthsCount: sequence.length,
+      attendanceRate: rate,
+      assumptions: forecastAssumptions(sequence, holidays),
+      months: monthsReport,
+      summary: {
+        income: toMoney(periodIncome),
+        expenses: toMoney(periodExpenses),
+        profit: toMoney(periodProfit),
+      },
     };
   }
 
@@ -520,4 +543,7 @@ module.exports = {
   DEFAULT_CLUB_TEACHERS_COUNT,
   DEFAULT_MANAGERS_COUNT,
   DEFAULT_TOTAL_ROOMS_COUNT,
+  DEFAULT_FORECAST_MONTHS,
+  FORECAST_AGES,
+  FORECAST_ASSUMPTIONS,
 };

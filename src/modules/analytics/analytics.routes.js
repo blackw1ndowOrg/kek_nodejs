@@ -3,7 +3,12 @@ const { Role } = require('@prisma/client');
 const { auth } = require('../../middleware/auth');
 const { authorize } = require('../../middleware/authorize');
 const { validate } = require('../../middleware/validate');
-const { groupProfitSchema, totalProfitSchema, forecastSchema } = require('./analytics.schema');
+const {
+  groupProfitSchema,
+  totalProfitSchema,
+  forecastSchema,
+  calendarForecastSchema,
+} = require('./analytics.schema');
 const { analyticsController } = require('./analytics.controller');
 
 const router = Router();
@@ -31,6 +36,12 @@ router.post(
   authorize(...STAFF),
   validate(forecastSchema),
   analyticsController.getForecast
+);
+router.post(
+  '/forecast/calendar',
+  authorize(...STAFF),
+  validate(calendarForecastSchema),
+  analyticsController.getCalendarForecast
 );
 
 module.exports = router;

@@ -97,10 +97,38 @@ const forecastSchema = z.object({
   body: forecastBodySchema.optional().default({}),
 });
 
+const MAX_FORECAST_MONTHS = 36;
+const MIN_FORECAST_YEAR = 1970; // нижня межа календаря (calendar.js)
+
+/** POST /forecast/calendar: з якого місяця, на скільки місяців, з якою відвідуваністю */
+const calendarForecastSchema = z.object({
+  body: z
+    .object({
+      from: monthSchema
+        .refine(
+          (value) => Number(value.slice(0, 4)) >= MIN_FORECAST_YEAR,
+          `from must be between ${MIN_FORECAST_YEAR}-01 and 9999-12`
+        )
+        .optional(),
+      months: z
+        .number({ error: 'months must be a number' })
+        .int('months must be an integer')
+        .min(1, 'months must be at least 1')
+        .max(MAX_FORECAST_MONTHS, `months cannot exceed ${MAX_FORECAST_MONTHS}`)
+        .optional(),
+      attendanceRate: attendanceRateSchema,
+    })
+    .strict()
+    .optional()
+    .default({}),
+});
+
 module.exports = {
   groupProfitSchema,
   totalProfitSchema,
   forecastSchema,
+  calendarForecastSchema,
+  MAX_FORECAST_MONTHS,
   positiveId,
   attendanceRateSchema,
 };

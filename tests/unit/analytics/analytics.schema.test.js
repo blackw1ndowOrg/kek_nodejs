@@ -2,6 +2,8 @@ const {
   groupProfitSchema,
   totalProfitSchema,
   forecastSchema,
+  calendarForecastSchema,
+  MAX_FORECAST_MONTHS,
 } = require('../../../src/modules/analytics/analytics.schema');
 
 describe('Analytics Schema Validation', () => {
@@ -192,6 +194,44 @@ describe('Analytics Schema Validation', () => {
       );
       expect(() => forecastSchema.parse({ body: { threshold: -1 } })).toThrow();
       expect(() => forecastSchema.parse({ body: { threshold: 'invalid' } })).toThrow();
+    });
+  });
+
+  describe('calendarForecastSchema', () => {
+    const parse = (body) => calendarForecastSchema.safeParse({ body });
+
+    test('порожнє тіло — усе за замовчуванням', () => {
+      expect(calendarForecastSchema.parse({}).body).toEqual({});
+      expect(parse({}).success).toBe(true);
+    });
+
+    test('from, months, attendanceRate', () => {
+      expect(parse({ from: '2026-11', months: 3, attendanceRate: 0.9 }).data.body).toEqual({
+        from: '2026-11',
+        months: 3,
+        attendanceRate: 0.9,
+      });
+      expect(parse({ months: MAX_FORECAST_MONTHS }).success).toBe(true);
+    });
+
+    test.each([
+      ['from не у форматі YYYY-MM', { from: '2026-13' }, 'month must be in YYYY-MM format'],
+      ['from — дата', { from: '2026-11-01' }, 'month must be in YYYY-MM format'],
+      ['from до 1970 року', { from: '0001-01' }, 'from must be between 1970-01 and 9999-12'],
+      ['from 1969-12', { from: '1969-12' }, 'from must be between 1970-01 and 9999-12'],
+      ['months 0', { months: 0 }, 'months must be at least 1'],
+      ['months більше 36', { months: 37 }, 'months cannot exceed 36'],
+      ['months дробове', { months: 1.5 }, 'months must be an integer'],
+      ['months рядком', { months: '3' }, 'months must be a number'],
+      ['attendanceRate більше 1', { attendanceRate: 1.5 }, 'attendanceRate cannot exceed 1'],
+    ])('%s -> помилка', (_name, body, message) => {
+      const result = parse(body);
+      expect(result.success).toBe(false);
+      expect(result.error.issues[0].message).toBe(message);
+    });
+
+    test('невідоме поле -> помилка', () => {
+      expect(parse({ months: 3, to: '2027-01' }).success).toBe(false);
     });
   });
 });

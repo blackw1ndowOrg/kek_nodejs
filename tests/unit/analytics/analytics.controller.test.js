@@ -15,6 +15,7 @@ describe('AnalyticsController', () => {
       getGroupProfit: jest.fn(),
       getTotalProfit: jest.fn(),
       calculateOptimalForecast: jest.fn(),
+      getCalendarForecast: jest.fn(),
     };
     controller = new AnalyticsController(mockService);
     mockReq = {
@@ -76,6 +77,20 @@ describe('AnalyticsController', () => {
       });
       expect(mockRes.status).toHaveBeenCalledWith(StatusCodes.OK);
       expect(mockRes.json).toHaveBeenCalledWith(forecastData);
+    });
+  });
+
+  describe('getCalendarForecast', () => {
+    test('передає тіло запиту в сервіс і повертає 200', async () => {
+      mockReq.body = { from: '2026-11', months: 3 };
+      const forecast = { from: '2026-11', months: [] };
+      mockService.getCalendarForecast.mockResolvedValue(forecast);
+
+      await controller.getCalendarForecast(mockReq, mockRes);
+
+      expect(mockService.getCalendarForecast).toHaveBeenCalledWith({ from: '2026-11', months: 3 });
+      expect(mockRes.status).toHaveBeenCalledWith(StatusCodes.OK);
+      expect(mockRes.json).toHaveBeenCalledWith(forecast);
     });
   });
 });

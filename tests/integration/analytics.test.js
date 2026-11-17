@@ -5,6 +5,9 @@ const { createApp } = require('../../src/app');
 const { config } = require('../../src/config');
 const { ErrorCodes } = require('../../src/errors/errorCodes');
 const { analyticsRepository } = require('../../src/modules/analytics/analytics.repository');
+const { analyticsService } = require('../../src/modules/analytics/analytics.service');
+const { settingsRepository } = require('../../src/modules/settings/settings.repository');
+const { settingsService } = require('../../src/modules/settings/settings.service');
 
 const BASE = '/api/v1/analytics';
 
@@ -567,6 +570,108 @@ describe('Analytics API (Supertest)', () => {
       );
       expect(res.body.requestedDemand.totalChildren).toBe(24);
       expect(res.body.recommended.totalAdmitted).toBe(24);
+    });
+  });
+
+  describe('POST /api/v1/analytics/forecast/calendar', () => {
+    const URL = `${BASE}/forecast/calendar`;
+    const kopiykas = (month, field) =>
+      month.ages.reduce((acc, row) => acc + row[field].kopiykas, 0);
+
+    beforeEach(() => {
+      jest.spyOn(analyticsService, 'now').mockReturnValue(new Date('2026-11-10T10:00:00Z'));
+    });
+
+    afterEach(async () => {
+      jest.restoreAllMocks();
+      jest.spyOn(settingsRepository, 'findAll').mockResolvedValue([]);
+      await settingsService.refresh(); // скинути свята, змінені в тесті
+    });
+
+    test.each(['TEACHER', 'PARENT'])('%s -> 403', async (role) => {
+      const res = await request(app).post(URL).set('Authorization', tokenFor(role)).send({});
+      expect(res.status).toBe(StatusCodes.FORBIDDEN);
+    });
+
+    test('без токена -> 401', async () => {
+      const res = await request(app).post(URL).send({});
+      expect(res.status).toBe(StatusCodes.UNAUTHORIZED);
+    });
+
+    test('3 місяці: рядки віків, спільні витрати, підсумок; інваріант суми щомісяця', async () => {
+      const res = await request(app)
+        .post(URL)
+        .set('Authorization', tokenFor('MANAGER'))
+        .send({ from: '2026-11', months: 3 });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body).toMatchObject({ from: '2026-11', to: '2027-01', monthsCount: 3 });
+      expect(res.body.months.map((m) => [m.month, m.workingDays])).toEqual([
+        ['2026-11', 21],
+        ['2026-12', 23],
+        ['2027-01', 21],
+      ]);
+      for (const month of res.body.months) {
+        expect(month.ages.map((row) => row.age)).toEqual([2, 3, 4, 5]);
+        expect(kopiykas(month, 'profit') - month.shared.total.kopiykas).toBe(
+          month.total.profit.kopiykas
+        );
+      }
+      const [nov, dec] = res.body.months;
+      expect(kopiykas(dec, 'meal')).toBeGreaterThan(kopiykas(nov, 'meal'));
+      expect(kopiykas(dec, 'tuition')).toBe(kopiykas(nov, 'tuition'));
+    });
+
+    test('листопад 2026 (21 день) збігається з GET /profit', async () => {
+      const [calendar, total] = await Promise.all([
+        request(app)
+          .post(URL)
+          .set('Authorization', tokenFor('ADMIN'))
+          .send({ from: '2026-11', months: 1 }),
+        request(app).get(`${BASE}/profit`).set('Authorization', tokenFor('ADMIN')),
+      ]);
+      expect(calendar.body.months[0].total.profit).toEqual(total.body.profit);
+    });
+
+    test('без тіла: 12 місяців із поточного', async () => {
+      const res = await request(app).post(URL).set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body).toMatchObject({ from: '2026-11', to: '2027-10', monthsCount: 12 });
+    });
+
+    test('після PATCH /settings/holidays календар бачить нові свята', async () => {
+      jest.spyOn(settingsRepository, 'upsert').mockImplementation(async (key, value) => ({
+        key,
+        value,
+      }));
+      const send = () =>
+        request(app)
+          .post(URL)
+          .set('Authorization', tokenFor('ADMIN'))
+          .send({ from: '2026-12', months: 1 });
+
+      const before = await send();
+      const patch = await request(app)
+        .patch('/api/v1/settings/holidays')
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ value: ['2026-12-25', '2026-12-31'] });
+      const after = await send();
+
+      expect(patch.status).toBe(StatusCodes.OK);
+      expect(before.body.months[0].workingDays).toBe(23);
+      expect(after.body.months[0].workingDays).toBe(21);
+    });
+
+    test.each([
+      ['months 0', { months: 0 }],
+      ['months 37', { months: 37 }],
+      ['from не місяць', { from: '2026/11' }],
+      ['attendanceRate 0', { attendanceRate: 0 }],
+      ['невідоме поле', { to: '2027-01' }],
+    ])('%s -> 400', async (_name, body) => {
+      const res = await request(app).post(URL).set('Authorization', tokenFor('ADMIN')).send(body);
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
     });
   });
 });

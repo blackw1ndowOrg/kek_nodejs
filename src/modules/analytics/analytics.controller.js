@@ -20,6 +20,11 @@ class AnalyticsController {
     const result = await this.service.calculateOptimalForecast(req.body);
     res.status(StatusCodes.OK).json(result);
   };
+
+  getCalendarForecast = async (req, res) => {
+    const result = await this.service.getCalendarForecast(req.body);
+    res.status(StatusCodes.OK).json(result);
+  };
 }
 
 const analyticsController = new AnalyticsController();

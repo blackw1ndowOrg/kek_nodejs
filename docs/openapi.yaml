@@ -1048,6 +1048,135 @@ components:
           $ref: '#/components/schemas/Money'
         netProfit:
           $ref: '#/components/schemas/Money'
+    CalendarForecastRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+          description: Перший місяць прогнозу YYYY-MM; за замовчуванням — поточний місяць за Києвом
+          example: '2026-11'
+        months:
+          type: integer
+          minimum: 1
+          maximum: 36
+          default: 12
+          example: 12
+        attendanceRate:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 1
+          description: Коефіцієнт відвідуваності для харчування; за замовчуванням — ATTENDANCE_RATE_PERCENT / 100
+          example: 0.8
+    CalendarForecastAgeRow:
+      type: object
+      description: Сума GET /groups/:id/profit усіх груп цього віку за місяць
+      properties:
+        age:
+          type: integer
+          example: 3
+        groupsCount:
+          type: integer
+          example: 2
+        childrenCount:
+          type: integer
+          example: 19
+        tuition:
+          $ref: '#/components/schemas/Money'
+        meal:
+          $ref: '#/components/schemas/Money'
+        income:
+          $ref: '#/components/schemas/Money'
+        educatorSalary:
+          $ref: '#/components/schemas/Money'
+        assistantSalary:
+          $ref: '#/components/schemas/Money'
+        roomsRent:
+          $ref: '#/components/schemas/Money'
+        expenses:
+          $ref: '#/components/schemas/Money'
+        profit:
+          $ref: '#/components/schemas/Money'
+    CalendarForecastMonth:
+      type: object
+      properties:
+        month:
+          type: string
+          example: '2026-12'
+        workingDays:
+          type: integer
+          description: Пн–Пт мінус свята (HOLIDAYS)
+          example: 22
+        ages:
+          type: array
+          description: Рядок для кожного віку 2, 3, 4, 5 — зокрема без груп (нулі)
+          items:
+            $ref: '#/components/schemas/CalendarForecastAgeRow'
+        shared:
+          type: object
+          description: Спільні витрати садка, між віками не діляться
+          properties:
+            clubTeachersSalary:
+              $ref: '#/components/schemas/Money'
+            clubRoomsRent:
+              $ref: '#/components/schemas/Money'
+            managerSalary:
+              $ref: '#/components/schemas/Money'
+            unassignedAssistantsSalary:
+              $ref: '#/components/schemas/Money'
+            idleRoomsRent:
+              $ref: '#/components/schemas/Money'
+            total:
+              $ref: '#/components/schemas/Money'
+        total:
+          type: object
+          description: 'Підсумок садка: profit = сума ages[].profit − shared.total'
+          properties:
+            childrenCount:
+              type: integer
+              example: 23
+            income:
+              $ref: '#/components/schemas/Money'
+            expenses:
+              $ref: '#/components/schemas/Money'
+            profit:
+              $ref: '#/components/schemas/Money'
+    CalendarForecastResponse:
+      type: object
+      properties:
+        from:
+          type: string
+          example: '2026-11'
+        to:
+          type: string
+          example: '2027-10'
+        monthsCount:
+          type: integer
+          example: 12
+        attendanceRate:
+          type: number
+          example: 0.8
+        assumptions:
+          type: array
+          description: Припущення прогнозу до рішення BA (перехід 1 вересня, літня перерва, розподіл спільних витрат); окремий рядок, якщо для року періоду в HOLIDAYS немає свят
+          items:
+            type: string
+        months:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarForecastMonth'
+        summary:
+          type: object
+          description: Суми за весь період
+          properties:
+            income:
+              $ref: '#/components/schemas/Money'
+            expenses:
+              $ref: '#/components/schemas/Money'
+            profit:
+              $ref: '#/components/schemas/Money'
     ForecastRequest:
       type: object
       properties:
@@ -2539,3 +2668,39 @@ paths:
                       workingDays:
                         type: integer
                         example: 22
+
+  /api/v1/analytics/forecast/calendar:
+    post:
+      summary: Прогноз профіту по місяцях у розрізі віку (ADMIN, MANAGER)
+      description: |
+        Для кожного місяця від `from` на `months` місяців: рядок для кожного віку (2–5 років) — сума профітів
+        його груп за тією ж формулою, що й `GET /analytics/groups/{id}/profit`; спільні витрати садка; підсумок.
+        Харчування рахується за робочими днями місяця (Пн–Пт мінус свята з налаштування HOLIDAYS);
+        навчання й зарплати однакові щомісяця. Склад груп — поточний.
+
+        Інваріант: сума `ages[].profit` − `shared.total` = `total.profit` для кожного місяця.
+      tags:
+        - Analytics
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarForecastRequest'
+      responses:
+        '200':
+          description: Прогноз по місяцях
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarForecastResponse'
+        '400':
+          description: Некоректні from, months чи attendanceRate або зайве поле
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Відсутній або недійсний токен
+        '403':
+          description: Недостатньо прав (TEACHER, PARENT)
