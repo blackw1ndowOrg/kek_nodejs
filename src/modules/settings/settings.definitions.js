@@ -6,6 +6,7 @@ const MAX_PERCENT = 100;
 const MAX_COUNT = 100;
 const MAX_DISCOUNT_LEVELS = 10;
 const MAX_WORKING_DAYS = 31;
+const MAX_HOLIDAYS = 100;
 
 const integer = (label, min, max) =>
   z
@@ -24,6 +25,14 @@ const discountLevelsSchema = z
   .max(MAX_DISCOUNT_LEVELS, `Discount levels: cannot exceed ${MAX_DISCOUNT_LEVELS}`)
   .refine((levels) => new Set(levels).size === levels.length, 'Discount levels must be unique');
 
+// Неробочі дні садка (свята), які календар віднімає від Пн–Пт. Порожній список — свят немає
+const holidaysSchema = z
+  .array(z.iso.date({ error: 'Holidays: each date must be in YYYY-MM-DD format' }), {
+    error: 'Holidays: must be an array of dates',
+  })
+  .max(MAX_HOLIDAYS, `Holidays: cannot exceed ${MAX_HOLIDAYS} dates`)
+  .refine((dates) => new Set(dates).size === dates.length, 'Holidays must be unique');
+
 /**
  * Single source of truth for settings: DB key (camelCase, as in seed), default value, and validation rule.
  * Defaults are required for tests and as a fallback if the key is not yet in the DB.
@@ -32,6 +41,7 @@ const SETTING_DEFINITIONS = Object.freeze({
   tuitionMonthly: { default: 1500000, schema: money('Monthly tuition') },
   yearlyDiscountPercent: { default: 12, schema: percent('Yearly payment discount') },
   discountLevels: { default: Object.freeze([10, 20, 30]), schema: discountLevelsSchema },
+  holidays: { default: Object.freeze([]), schema: holidaysSchema },
   mealBasePerDay: { default: 30000, schema: money('Base daily meal (2 years old)') },
   mealPerExtraYear: { default: 10000, schema: money('Meal extra per year', 0) },
   roomMonthlyCost: { default: 5000000, schema: money('Monthly room cost') },

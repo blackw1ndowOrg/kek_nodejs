@@ -99,6 +99,18 @@ describe('refresh', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('tuitionMonthly'));
   });
 
+  test('свята з бази потрапляють у кеш; невалідні — замінюються дефолтом', async () => {
+    const valid = createService([{ key: 'holidays', value: ['2026-01-01', '2026-08-24'] }]);
+    await valid.service.refresh();
+    expect(valid.service.get('HOLIDAYS')).toEqual(['2026-01-01', '2026-08-24']);
+    expect(Object.isFrozen(valid.service.get('HOLIDAYS'))).toBe(true);
+
+    const invalid = createService([{ key: 'holidays', value: ['2026-01-01', '2026-01-01'] }]);
+    await invalid.service.refresh();
+    expect(invalid.service.get('HOLIDAYS')).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('holidays'));
+  });
+
   test('невідомий ключ із бази потрапляє в кеш без валідації', async () => {
     const { service } = createService([{ key: 'customKey', value: 42 }]);
     await service.refresh();

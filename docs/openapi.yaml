@@ -95,6 +95,12 @@ components:
               items:
                 type: integer
               example: [10, 20, 30]
+            - type: array
+              description: Свята (HOLIDAYS) — дати YYYY-MM-DD без дублікатів; порожній масив — свят немає
+              items:
+                type: string
+                format: date
+              example: ['2026-12-25', '2027-01-01']
     Room:
       type: object
       properties:
@@ -1156,6 +1162,7 @@ paths:
                   tuitionMonthly: 1500000
                   yearlyDiscountPercent: 12
                   discountLevels: [10, 20, 30]
+                  holidays: ['2026-12-25', '2027-01-01']
                   mealBasePerDay: 30000
                   managerSalary: 8000000
         '401':
@@ -1213,6 +1220,12 @@ paths:
                         items:
                           type: integer
                         example: [10, 20, 30]
+                      - type: array
+                        description: Свята (HOLIDAYS) — дати YYYY-MM-DD без дублікатів; порожній масив — свят немає
+                        items:
+                          type: string
+                          format: date
+                        example: ['2026-12-25', '2027-01-01']
         '404':
           description: Налаштування з таким ключем не знайдено
     put:
@@ -1251,6 +1264,12 @@ paths:
                         items:
                           type: integer
                         example: [10, 20, 30]
+                      - type: array
+                        description: Свята (HOLIDAYS) — дати YYYY-MM-DD без дублікатів; порожній масив — свят немає
+                        items:
+                          type: string
+                          format: date
+                        example: ['2026-12-25', '2027-01-01']
         '400':
           description: Невалідне значення для налаштування
         '403':
@@ -1293,6 +1312,12 @@ paths:
                         items:
                           type: integer
                         example: [10, 20, 30]
+                      - type: array
+                        description: Свята (HOLIDAYS) — дати YYYY-MM-DD без дублікатів; порожній масив — свят немає
+                        items:
+                          type: string
+                          format: date
+                        example: ['2026-12-25', '2027-01-01']
         '400':
           description: Невалідне значення для налаштування
         '403':
