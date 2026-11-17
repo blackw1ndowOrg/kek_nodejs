@@ -1057,6 +1057,11 @@ components:
         attendanceRate:
           type: number
           example: 0.8
+        month:
+          type: string
+          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+          description: Місяць прогнозу YYYY-MM; від нього залежать робочі дні й харчування. За замовчуванням — поточний місяць за Києвом
+          example: '2026-12'
         age2:
           type: integer
           example: 20
@@ -2499,3 +2504,38 @@ paths:
       responses:
         '200':
           description: Оптимальний план формування груп та прогноз доходу
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Структура плану й стратегій описана в docs/ANALYTICS.md (розділ 4); суми — об'єкти Money
+                additionalProperties: true
+                properties:
+                  requestedDemand:
+                    type: object
+                    description: Запитаний попит за віком
+                  recommended:
+                    type: object
+                    nullable: true
+                    description: Рекомендована конфігурація груп із доходами, витратами й профітом
+                  topVariants:
+                    type: array
+                    description: Найкращі альтернативні конфігурації
+                    items:
+                      type: object
+                  strategies:
+                    type: object
+                    description: Три управлінські моделі (розділ 4.5 ANALYTICS.md)
+                  marginalEconomics:
+                    type: object
+                    description: Граничні показники (додаткова дитина, поради щодо черги)
+                  calendar:
+                    type: object
+                    description: Місяць прогнозу та його робочі дні (Пн–Пт мінус свята з HOLIDAYS), за якими пораховано харчування
+                    properties:
+                      month:
+                        type: string
+                        example: '2026-12'
+                      workingDays:
+                        type: integer
+                        example: 22

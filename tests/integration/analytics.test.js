@@ -447,6 +447,31 @@ describe('Analytics API (Supertest)', () => {
       );
     });
 
+    test('робочі дні беруться з календаря місяця прогнозу', async () => {
+      const send = (month) =>
+        request(app)
+          .post(`${BASE}/forecast`)
+          .set('Authorization', tokenFor('ADMIN'))
+          .send({ 2: 20, 3: 20, 4: 20, 5: 20, month });
+      const february = await send('2026-02');
+      const december = await send('2026-12');
+      expect(february.status).toBe(StatusCodes.OK);
+      expect(february.body.calendar).toEqual({ month: '2026-02', workingDays: 20 });
+      expect(december.body.calendar).toEqual({ month: '2026-12', workingDays: 23 });
+      expect(february.body.recommended.financials.mealIncome.kopiykas).toBeLessThan(
+        december.body.recommended.financials.mealIncome.kopiykas
+      );
+    });
+
+    test('некоректний month -> 400', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 10, month: '2026-13' });
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.details[0].message).toBe('month must be in YYYY-MM format');
+    });
+
     test('успішне прогнозування з динамічним віковим попитом: 200 OK', async () => {
       const res = await request(app)
         .post(`${BASE}/forecast`)

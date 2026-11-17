@@ -1054,6 +1054,50 @@ describe('AnalyticsService', () => {
       expect(res.requestedDemand.totalChildren).toBe(0);
       expect(res.recommended.groupsCount).toBe(0);
     });
+
+    describe('робочі дні з календаря замість сталих 21', () => {
+      const withCalendar = (holidays, now) =>
+        new AnalyticsService(
+          mockRepo,
+          { get: jest.fn((key) => (key === 'HOLIDAYS' ? holidays : DEFAULT_SETTINGS[key])) },
+          () => now
+        );
+      const demand = { 2: 20, 3: 20, 4: 20, 5: 20 };
+
+      test('місяць за замовчуванням — поточний за Києвом, свята з налаштувань', async () => {
+        // 30.04.2026 22:30 UTC — у Києві вже 1 травня
+        const res = await withCalendar(
+          ['2026-05-01', '2026-05-08'],
+          new Date('2026-04-30T22:30:00Z')
+        ).calculateOptimalForecast(demand);
+        expect(res.calendar).toEqual({ month: '2026-05', workingDays: 19 });
+      });
+
+      test('month у запиті має пріоритет', async () => {
+        const res = await withCalendar(
+          [],
+          new Date('2026-05-15T10:00:00Z')
+        ).calculateOptimalForecast({ ...demand, month: '2026-11' });
+        expect(res.calendar).toEqual({ month: '2026-11', workingDays: 21 });
+      });
+
+      test('нові свята в налаштуваннях зменшують харчування', async () => {
+        const now = new Date('2026-08-10T10:00:00Z');
+        const without = await withCalendar([], now).calculateOptimalForecast(demand);
+        const withHoliday = await withCalendar(['2026-08-24'], now).calculateOptimalForecast(
+          demand
+        );
+        expect(without.calendar.workingDays).toBe(21);
+        expect(withHoliday.calendar.workingDays).toBe(20);
+        expect(withHoliday.recommended.financials.mealIncome.kopiykas).toBeLessThan(
+          without.recommended.financials.mealIncome.kopiykas
+        );
+      });
+
+      test('поточний момент за замовчуванням — new Date()', () => {
+        expect(new AnalyticsService(mockRepo, mockSettings).now()).toBeInstanceOf(Date);
+      });
+    });
   });
 
   describe('formatVariantFinancials & formatOptimalForecastMoney helpers', () => {

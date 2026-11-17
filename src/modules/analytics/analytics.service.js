@@ -6,7 +6,8 @@ const {
   clubTeacherSalary,
   managerSalary,
 } = require('../../domain/salary');
-const { optimizeKindergartenCapacity } = require('../../domain/forecast');
+const { optimizeKindergartenCapacity, resolveWorkingDays } = require('../../domain/forecast');
+const { currentMonth } = require('../../domain/calendar');
 const { toMoney } = require('../../domain/money');
 const { settingsService } = require('../settings/settings.service');
 const { analyticsRepository } = require('./analytics.repository');
@@ -29,9 +30,19 @@ function isStaffActive(staffRelation, staffId) {
 }
 
 class AnalyticsService {
-  constructor(repository = analyticsRepository, settings = settingsService) {
+  /**
+   * @param {object} repository
+   * @param {object} settings
+   * @param {() => Date} now поточний момент: від нього рахується поточний місяць (підміняється в тестах)
+   */
+  constructor(
+    repository = analyticsRepository,
+    settings = settingsService,
+    now = () => new Date()
+  ) {
     this.repository = repository;
     this.settings = settings;
+    this.now = now;
   }
 
   /**
@@ -382,10 +393,16 @@ class AnalyticsService {
       mealBasePerDay: this.settings.get('MEAL_BASE_PER_DAY'),
       mealPerExtraYear: this.settings.get('MEAL_PER_EXTRA_YEAR'),
       attendanceRate: demand.attendanceRate ?? this.settings.get('ATTENDANCE_RATE_PERCENT') / 100,
+      // Харчування — за робочими днями місяця прогнозу (Пн–Пт мінус свята), а не за сталими 21
+      month: demand.month ?? currentMonth(this.now()),
+      holidays: this.settings.get('HOLIDAYS'),
     };
 
     const rawResult = optimizeKindergartenCapacity(demand, options);
-    return formatOptimalForecastMoney(rawResult);
+    return {
+      ...formatOptimalForecastMoney(rawResult),
+      calendar: { month: options.month, workingDays: resolveWorkingDays(options) },
+    };
   }
 }
 
