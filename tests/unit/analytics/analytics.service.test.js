@@ -31,7 +31,11 @@ describe('AnalyticsService', () => {
     YEARLY_DISCOUNT_PERCENT: 12,
     WORKING_DAYS_PER_MONTH: 21,
     ATTENDANCE_RATE_PERCENT: 80,
+    HOLIDAYS: [],
   };
+
+  // Листопад 2026 — 21 робочий день, тож суми збігаються з колишніми сталими 21
+  const NOVEMBER_2026 = new Date('2026-11-16T10:00:00Z');
 
   beforeEach(() => {
     mockRepo = {
@@ -43,7 +47,7 @@ describe('AnalyticsService', () => {
     mockSettings = {
       get: jest.fn((key) => DEFAULT_SETTINGS[key]),
     };
-    service = new AnalyticsService(mockRepo, mockSettings);
+    service = new AnalyticsService(mockRepo, mockSettings, () => NOVEMBER_2026);
   });
 
   test('експортує дефолтний екземпляр analyticsService та константи', () => {
@@ -388,9 +392,8 @@ describe('AnalyticsService', () => {
       expect(resFull.profit.uah).toBe(-28700);
     });
 
-    test('робочі дні і відвідуваність за замовчуванням беруться з налаштувань, query їх перекриває', async () => {
+    test('робочі дні — з календаря місяця, відвідуваність — з налаштувань; query їх перекриває', async () => {
       mockSettings.get.mockImplementation((key) => {
-        if (key === 'WORKING_DAYS_PER_MONTH') return 20;
         if (key === 'ATTENDANCE_RATE_PERCENT') return 50;
         return DEFAULT_SETTINGS[key];
       });
@@ -408,13 +411,38 @@ describe('AnalyticsService', () => {
         ],
       });
 
-      // 3-річки: 400 грн/день × 20 днів × 0,5 = 4 000 грн на дитину × 2 = 8 000 грн
+      // Поточний місяць (листопад 2026, 21 день): 400 грн × 21 × 0,5 × 2 дитини = 8 400 грн
       const res = await service.getGroupProfit(4);
-      expect(res.mealIncome.uah).toBe(8000);
+      expect(res.mealIncome.uah).toBe(8400);
+      expect(res.calendar).toEqual({ month: '2026-11', workingDays: 21 });
 
-      // query-параметр перекриває налаштування: 400 × 20 × 1 × 2 = 16 000 грн
-      const resFull = await service.getGroupProfit(4, { attendanceRate: 1 });
+      // Лютий 2026 — 20 днів: 400 × 20 × 0,5 × 2 = 8 000 грн
+      const february = await service.getGroupProfit(4, { month: '2026-02' });
+      expect(february.mealIncome.uah).toBe(8000);
+      expect(february.calendar).toEqual({ month: '2026-02', workingDays: 20 });
+
+      // query-параметр перекриває відвідуваність: 400 × 20 × 1 × 2 = 16 000 грн
+      const resFull = await service.getGroupProfit(4, { month: '2026-02', attendanceRate: 1 });
       expect(resFull.mealIncome.uah).toBe(16000);
+    });
+
+    test('свята з налаштувань зменшують харчування групи', async () => {
+      mockSettings.get.mockImplementation((key) =>
+        key === 'HOLIDAYS' ? ['2026-12-25', '2026-12-26'] : DEFAULT_SETTINGS[key]
+      );
+      mockRepo.findGroupById.mockResolvedValue({
+        id: 4,
+        name: 'Чомусики',
+        age: 3,
+        room: { id: 7, name: 'Кімната 7', monthlyCost: 5000000 },
+        children: [{ id: 1, discountPercent: 0 }],
+      });
+
+      // Грудень 2026: 23 будні, 25.12 — п'ятниця, 26.12 — субота (не віднімається вдруге)
+      const res = await service.getGroupProfit(4, { month: '2026-12' });
+      expect(res.calendar).toEqual({ month: '2026-12', workingDays: 22 });
+      // 400 грн × 22 × 0,8 = 7 040 грн
+      expect(res.mealIncome.uah).toBe(7040);
     });
 
     test('враховує річну знижку 12% для дітей з paymentPlan: YEARLY', async () => {
@@ -621,9 +649,8 @@ describe('AnalyticsService', () => {
       expect(res.income.tuition.kopiykas).toBe(2508000);
     });
 
-    test('робочі дні і відвідуваність за замовчуванням беруться з налаштувань, query їх перекриває', async () => {
+    test('робочі дні — з календаря місяця, відвідуваність — з налаштувань; query їх перекриває', async () => {
       mockSettings.get.mockImplementation((key) => {
-        if (key === 'WORKING_DAYS_PER_MONTH') return 20;
         if (key === 'ATTENDANCE_RATE_PERCENT') return 50;
         return DEFAULT_SETTINGS[key];
       });
@@ -641,12 +668,39 @@ describe('AnalyticsService', () => {
         },
       ]);
 
-      // 3-річки: 400 грн/день × 20 днів × 0,5 × 2 дитини = 8 000 грн
+      // Поточний місяць (листопад 2026, 21 день): 400 грн × 21 × 0,5 × 2 дитини = 8 400 грн
       const res = await service.getTotalProfit();
-      expect(res.income.meal.uah).toBe(8000);
+      expect(res.income.meal.uah).toBe(8400);
+      expect(res.calendar).toEqual({ month: '2026-11', workingDays: 21 });
 
-      const resFull = await service.getTotalProfit({ attendanceRate: 1 });
+      // Лютий 2026 — 20 днів: 400 × 20 × 0,5 × 2 = 8 000 грн; різниця лише в харчуванні
+      const february = await service.getTotalProfit({ month: '2026-02' });
+      expect(february.income.meal.uah).toBe(8000);
+      expect(february.calendar).toEqual({ month: '2026-02', workingDays: 20 });
+      expect(res.expenses).toEqual(february.expenses);
+      expect(res.profit.uah - february.profit.uah).toBe(400);
+
+      const resFull = await service.getTotalProfit({ month: '2026-02', attendanceRate: 1 });
       expect(resFull.income.meal.uah).toBe(16000);
+    });
+
+    test('профіт садка і профіт групи за той самий місяць рахують однакове харчування', async () => {
+      const group = {
+        id: 1,
+        name: 'Чомусики',
+        age: 5,
+        room: { id: 1, monthlyCost: 5000000 },
+        children: [{ id: 1, discountPercent: 0 }],
+      };
+      mockRepo.findGroupById.mockResolvedValue(group);
+      mockRepo.findAllGroupsWithActiveChildren.mockResolvedValue([group]);
+      const query = { month: '2027-01' };
+      const [groupRes, totalRes] = await Promise.all([
+        service.getGroupProfit(1, query),
+        service.getTotalProfit(query),
+      ]);
+      expect(totalRes.calendar).toEqual(groupRes.calendar);
+      expect(totalRes.groups[0].mealIncome).toEqual(groupRes.mealIncome);
     });
 
     test('getTotalProfit використовує defaultRoomCost якщо кімната в групі не задана', async () => {
@@ -1038,9 +1092,11 @@ describe('AnalyticsService', () => {
       );
       const fromSettings = await service.calculateOptimalForecast({ targetChildrenCount: 24 });
 
-      const explicit = new AnalyticsService(mockRepo, {
-        get: jest.fn((key) => DEFAULT_SETTINGS[key]),
-      });
+      const explicit = new AnalyticsService(
+        mockRepo,
+        { get: jest.fn((key) => DEFAULT_SETTINGS[key]) },
+        () => NOVEMBER_2026
+      );
       const withQuery = await explicit.calculateOptimalForecast({
         targetChildrenCount: 24,
         attendanceRate: 1,

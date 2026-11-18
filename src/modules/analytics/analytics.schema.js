@@ -26,6 +26,8 @@ const groupProfitSchema = z.object({
   query: z
     .object({
       attendanceRate: attendanceRateSchema,
+      // Місяць розрахунку: від нього залежать робочі дні й харчування. За замовчуванням — поточний
+      month: monthSchema.optional(),
     })
     .optional(),
 });
@@ -34,6 +36,8 @@ const totalProfitSchema = z.object({
   query: z
     .object({
       attendanceRate: attendanceRateSchema,
+      // Місяць розрахунку: від нього залежать робочі дні й харчування. За замовчуванням — поточний
+      month: monthSchema.optional(),
     })
     .optional(),
 });

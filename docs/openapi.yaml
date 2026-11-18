@@ -1020,6 +1020,16 @@ components:
         kopiykas:
           type: integer
           example: 350000
+    CalculationCalendar:
+      type: object
+      description: Місяць розрахунку та його робочі дні (Пн–Пт мінус свята з HOLIDAYS), за якими пораховано харчування
+      properties:
+        month:
+          type: string
+          example: '2026-12'
+        workingDays:
+          type: integer
+          example: 22
     GroupProfitResponse:
       type: object
       properties:
@@ -1039,6 +1049,8 @@ components:
           $ref: '#/components/schemas/Money'
         profit:
           $ref: '#/components/schemas/Money'
+        calendar:
+          $ref: '#/components/schemas/CalculationCalendar'
     TotalProfitResponse:
       type: object
       properties:
@@ -1048,6 +1060,8 @@ components:
           $ref: '#/components/schemas/Money'
         netProfit:
           $ref: '#/components/schemas/Money'
+        calendar:
+          $ref: '#/components/schemas/CalculationCalendar'
     ForecastRequest:
       type: object
       properties:
@@ -2460,6 +2474,14 @@ paths:
           schema:
             type: number
           description: Коефіцієнт відвідуваності (від 0 до 1, за замовчуванням 0.8)
+        - in: query
+          name: month
+          required: false
+          schema:
+            type: string
+            pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+            example: '2026-12'
+          description: Місяць розрахунку YYYY-MM; від нього залежать робочі дні й харчування. За замовчуванням — поточний місяць за Києвом
       responses:
         '200':
           description: Фінансовий звіт по групі
@@ -2482,6 +2504,14 @@ paths:
           schema:
             type: number
           description: Коефіцієнт відвідуваності
+        - in: query
+          name: month
+          required: false
+          schema:
+            type: string
+            pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+            example: '2026-12'
+          description: Місяць розрахунку YYYY-MM; від нього залежать робочі дні й харчування. За замовчуванням — поточний місяць за Києвом
       responses:
         '200':
           description: Загальний баланс доходів, витрат та прибутку
@@ -2530,12 +2560,4 @@ paths:
                     type: object
                     description: Граничні показники (додаткова дитина, поради щодо черги)
                   calendar:
-                    type: object
-                    description: Місяць прогнозу та його робочі дні (Пн–Пт мінус свята з HOLIDAYS), за якими пораховано харчування
-                    properties:
-                      month:
-                        type: string
-                        example: '2026-12'
-                      workingDays:
-                        type: integer
-                        example: 22
+                    $ref: '#/components/schemas/CalculationCalendar'
