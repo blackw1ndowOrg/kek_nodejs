@@ -153,16 +153,16 @@ KEK Node.js team
 
 18/11/2026
 
-Олександр Купина ІПЗ-32 (https://github.com/SashaKupyna): Team Lead
-Анатолій Кульчицький ІПЗ-32 (https://github.com/blackw1ndow): BA
-Олександр Милян ІПЗ-32 (https://github.com/AsterPy): QA
-Максим Романюк ІПЗ-33 (https://github.com/kubezen-stack): Dev
-Андрій Перегінць ІПЗ-33 (https://github.com/AndriiPerehinets): Dev
-Богдан Леонідов ІПЗ-32 (https://github.com/bohdawg): Dev
-Галас Анна-Софія ІПЗ-31 (https://github.com/anna-halas): Dev
-Максим Попович ІПЗ-33 (https://github.com/DecimusMM): Dev
-Денис Чудла ІПЗ-33 (https://github.com/denyschudla25-netizen): Dev
-Поп'юк Денис ІПЗ-33 (https://github.com/Densssss1): Dev
+1. Олександр Купина ІПЗ-32 (https://github.com/SashaKupyna): Team Lead
+2. Анатолій Кульчицький ІПЗ-32 (https://github.com/blackw1ndow): BA
+3. Олександр Милян ІПЗ-32 (https://github.com/AsterPy): QA
+4. Максим Романюк ІПЗ-33 (https://github.com/kubezen-stack): Dev
+5. Андрій Перегінць ІПЗ-33 (https://github.com/AndriiPerehinets): Dev
+6. Богдан Леонідов ІПЗ-32 (https://github.com/bohdawg): Dev
+7. Галас Анна-Софія ІПЗ-31 (https://github.com/anna-halas): Dev
+8. Максим Попович ІПЗ-33 (https://github.com/DecimusMM): Dev
+9. Денис Чудла ІПЗ-33 (https://github.com/denyschudla25-netizen): Dev
+10. Поп'юк Денис ІПЗ-33 (https://github.com/Densssss1): Dev
 
 
 ##
