@@ -1,4 +1,8 @@
 const { z } = require('zod');
+const { MONTH_PATTERN } = require('../../domain/absence');
+
+/** Місяць 'YYYY-MM' */
+const monthSchema = z.string().regex(MONTH_PATTERN, 'month must be in YYYY-MM format');
 
 const positiveId = z.coerce
   .number({ error: 'Group ID must be a number' })
@@ -22,6 +26,8 @@ const groupProfitSchema = z.object({
   query: z
     .object({
       attendanceRate: attendanceRateSchema,
+      // Місяць розрахунку: від нього залежать робочі дні й харчування. За замовчуванням — поточний
+      month: monthSchema.optional(),
     })
     .optional(),
 });
@@ -30,6 +36,8 @@ const totalProfitSchema = z.object({
   query: z
     .object({
       attendanceRate: attendanceRateSchema,
+      // Місяць розрахунку: від нього залежать робочі дні й харчування. За замовчуванням — поточний
+      month: monthSchema.optional(),
     })
     .optional(),
 });
@@ -78,6 +86,8 @@ const forecastBodySchema = z
     demand: z.record(z.unknown()).optional(),
     ageGroups: z.record(z.unknown()).optional(),
     attendanceRate: attendanceRateSchema,
+    // Місяць прогнозу: від нього залежать робочі дні й харчування. За замовчуванням — поточний
+    month: monthSchema.optional(),
     threshold: z
       .preprocess(
         (val) => (typeof val === 'string' && val.trim() !== '' ? Number(val) : val),

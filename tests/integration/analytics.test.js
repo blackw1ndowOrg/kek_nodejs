@@ -5,6 +5,9 @@ const { createApp } = require('../../src/app');
 const { config } = require('../../src/config');
 const { ErrorCodes } = require('../../src/errors/errorCodes');
 const { analyticsRepository } = require('../../src/modules/analytics/analytics.repository');
+const { analyticsService } = require('../../src/modules/analytics/analytics.service');
+const { settingsRepository } = require('../../src/modules/settings/settings.repository');
+const { settingsService } = require('../../src/modules/settings/settings.service');
 
 const BASE = '/api/v1/analytics';
 
@@ -36,6 +39,8 @@ describe('Analytics API (Supertest)', () => {
   const app = createApp();
 
   beforeEach(() => {
+    // Поточний місяць — листопад 2026 (21 робочий день): суми в тестах не залежать від дати запуску
+    jest.spyOn(analyticsService, 'now').mockReturnValue(new Date('2026-11-16T10:00:00Z'));
     jest.spyOn(analyticsRepository, 'findGroupById').mockResolvedValue(MOCK_GROUP);
     jest
       .spyOn(analyticsRepository, 'findAllActiveChildren')
@@ -248,6 +253,38 @@ describe('Analytics API (Supertest)', () => {
       expect(res.status).toBe(StatusCodes.BAD_REQUEST);
       expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
     });
+
+    test('харчування — за робочими днями місяця: без month поточний, ?month перекриває', async () => {
+      const get = (query = '') =>
+        request(app).get(`${BASE}/groups/2/profit${query}`).set('Authorization', tokenFor('ADMIN'));
+      const [current, february, december] = await Promise.all([
+        get(),
+        get('?month=2026-02'),
+        get('?month=2026-12'),
+      ]);
+
+      expect(current.body.calendar).toEqual({ month: '2026-11', workingDays: 21 });
+      expect(february.body.calendar).toEqual({ month: '2026-02', workingDays: 20 });
+      expect(december.body.calendar).toEqual({ month: '2026-12', workingDays: 23 });
+      // 2 трирічки × 400 грн × дні × 0,8
+      expect(current.body.mealIncome.uah).toBe(13440);
+      expect(february.body.mealIncome.uah).toBe(12800);
+      expect(december.body.mealIncome.uah).toBe(14720);
+      // Навчання й витрати від місяця не залежать
+      expect(february.body.tuitionIncome).toEqual(december.body.tuitionIncome);
+      expect(february.body.expenses).toEqual(december.body.expenses);
+    });
+
+    test.each(['2026-13', '2026-1', '2026-11-01'])(
+      'некоректний month=%s -> 400 VALIDATION_ERROR',
+      async (month) => {
+        const res = await request(app)
+          .get(`${BASE}/groups/2/profit?month=${month}`)
+          .set('Authorization', tokenFor('ADMIN'));
+        expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+        expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+      }
+    );
   });
 
   describe('GET /api/v1/analytics/profit', () => {
@@ -383,6 +420,55 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
     });
 
+    test('?month: різна кількість робочих днів дає різне харчування і профіт', async () => {
+      const get = (query) =>
+        request(app).get(`${BASE}/profit${query}`).set('Authorization', tokenFor('ADMIN'));
+      const [february, december] = await Promise.all([
+        get('?month=2026-02'),
+        get('?month=2026-12'),
+      ]);
+
+      expect(february.status).toBe(StatusCodes.OK);
+      expect(february.body.calendar).toEqual({ month: '2026-02', workingDays: 20 });
+      expect(december.body.calendar).toEqual({ month: '2026-12', workingDays: 23 });
+      expect(february.body.income.meal.uah).toBe(12800);
+      expect(december.body.income.meal.uah).toBe(14720);
+      expect(february.body.expenses).toEqual(december.body.expenses);
+      expect(december.body.profit.uah - february.body.profit.uah).toBe(14720 - 12800);
+    });
+
+    test('некоректний month -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .get(`${BASE}/profit?month=december`)
+        .set('Authorization', tokenFor('ADMIN'));
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    test('після PATCH /settings/holidays профіт рахується з новими святами', async () => {
+      jest.spyOn(settingsRepository, 'upsert').mockImplementation(async (key, value) => ({
+        key,
+        value,
+      }));
+      const profitFor = () =>
+        request(app).get(`${BASE}/profit?month=2026-12`).set('Authorization', tokenFor('MANAGER'));
+      const patchHolidays = (value) =>
+        request(app)
+          .patch('/api/v1/settings/holidays')
+          .set('Authorization', tokenFor('ADMIN'))
+          .send({ value });
+
+      const before = await profitFor();
+      expect((await patchHolidays(['2026-12-25', '2026-12-31'])).status).toBe(StatusCodes.OK);
+      const after = await profitFor();
+      await patchHolidays([]); // повертаємо кеш налаштувань до початкового стану
+      expect(settingsService.get('HOLIDAYS')).toEqual([]);
+
+      expect(before.body.calendar.workingDays).toBe(23);
+      expect(after.body.calendar.workingDays).toBe(21);
+      expect(after.body.income.meal.uah).toBeLessThan(before.body.income.meal.uah);
+    });
+
     test('враховує додаткових помічників у штаті, нараховуючи їм базову зарплату', async () => {
       analyticsRepository.countActiveStaffByType.mockResolvedValueOnce({
         CLUB_TEACHER: 5,
@@ -445,6 +531,31 @@ describe('Analytics API (Supertest)', () => {
       expect(res.body.marginalEconomics.expansionAnalysis.insight).toContain(
         'Відкриття наступної групи вимагатиме стрибка витрат на'
       );
+    });
+
+    test('робочі дні беруться з календаря місяця прогнозу', async () => {
+      const send = (month) =>
+        request(app)
+          .post(`${BASE}/forecast`)
+          .set('Authorization', tokenFor('ADMIN'))
+          .send({ 2: 20, 3: 20, 4: 20, 5: 20, month });
+      const february = await send('2026-02');
+      const december = await send('2026-12');
+      expect(february.status).toBe(StatusCodes.OK);
+      expect(february.body.calendar).toEqual({ month: '2026-02', workingDays: 20 });
+      expect(december.body.calendar).toEqual({ month: '2026-12', workingDays: 23 });
+      expect(february.body.recommended.financials.mealIncome.kopiykas).toBeLessThan(
+        december.body.recommended.financials.mealIncome.kopiykas
+      );
+    });
+
+    test('некоректний month -> 400', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 10, month: '2026-13' });
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.details[0].message).toBe('month must be in YYYY-MM format');
     });
 
     test('успішне прогнозування з динамічним віковим попитом: 200 OK', async () => {

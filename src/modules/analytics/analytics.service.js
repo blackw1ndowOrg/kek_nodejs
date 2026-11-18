@@ -7,6 +7,7 @@ const {
   managerSalary,
 } = require('../../domain/salary');
 const { optimizeKindergartenCapacity } = require('../../domain/forecast');
+const { currentMonth, workingDaysInMonth } = require('../../domain/calendar');
 const { toMoney } = require('../../domain/money');
 const { settingsService } = require('../settings/settings.service');
 const { analyticsRepository } = require('./analytics.repository');
@@ -29,9 +30,19 @@ function isStaffActive(staffRelation, staffId) {
 }
 
 class AnalyticsService {
-  constructor(repository = analyticsRepository, settings = settingsService) {
+  /**
+   * @param {object} repository
+   * @param {object} settings
+   * @param {() => Date} now поточний момент: від нього рахується поточний місяць (підміняється в тестах)
+   */
+  constructor(
+    repository = analyticsRepository,
+    settings = settingsService,
+    now = () => new Date()
+  ) {
     this.repository = repository;
     this.settings = settings;
+    this.now = now;
   }
 
   /**
@@ -46,8 +57,24 @@ class AnalyticsService {
   }
 
   /**
+   * Місяць розрахунку та його робочі дні (Пн–Пт мінус свята з HOLIDAYS).
+   * Від них залежить харчування; без month — поточний місяць за Києвом
+   *
+   * @param {string} [month] 'YYYY-MM'
+   * @returns {{ month: string, workingDays: number }}
+   */
+  resolveCalendar(month) {
+    const resolvedMonth = month ?? currentMonth(this.now());
+    return {
+      month: resolvedMonth,
+      workingDays: workingDaysInMonth(resolvedMonth, this.settings.get('HOLIDAYS')),
+    };
+  }
+
+  /**
    * Розрахунок профіту окремої групи:
    * - Дохід: сума щомісячної оплати за навчання та харчування за віком групи для всіх активних дітей
+   *   (харчування — за робочими днями місяця query.month, за замовчуванням поточного)
    * - Витрати: зарплата вихователя (за кількістю дітей) + зарплата помічника + оренда закріпленої кімнати (50 000 грн)
    * - Профіт: дохід - витрати
    *
@@ -77,7 +104,8 @@ class AnalyticsService {
     const defaultRoomCost = this.settings.get('ROOM_MONTHLY_COST');
     const mealBase = this.settings.get('MEAL_BASE_PER_DAY');
     const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
-    const workingDays = this.settings.get('WORKING_DAYS_PER_MONTH');
+    const calendar = this.resolveCalendar(query.month);
+    const { workingDays } = calendar;
 
     const activeChildren = group.children || [];
     const childrenCount = group._count?.children ?? activeChildren.length;
@@ -145,12 +173,14 @@ class AnalyticsService {
         income: incomeBreakdown,
         expenses: expensesBreakdown,
       },
+      calendar,
     };
   }
 
   /**
    * Розрахунок загального профіту всього садка:
    * - Доходи: сума навчання та харчування дітей, зарахованих до груп
+   *   (харчування — за робочими днями місяця query.month, за замовчуванням поточного)
    * - Витрати: фактичні зарплати вихователів + помічників + викладачі гуртків
    *   + менеджери + оренда всіх 20 кімнат (з розмежуванням на операційні та простій)
    * - Чистий профіт: загальний дохід - загальні витрати
@@ -173,7 +203,8 @@ class AnalyticsService {
     const roomsCountSetting = this.settings.get('DEFAULT_ROOMS_COUNT');
     const mealBase = this.settings.get('MEAL_BASE_PER_DAY');
     const mealExtra = this.settings.get('MEAL_PER_EXTRA_YEAR');
-    const workingDays = this.settings.get('WORKING_DAYS_PER_MONTH');
+    const calendar = this.resolveCalendar(query.month);
+    const { workingDays } = calendar;
     const defaultRoomCost = roomCostSetting;
     const roomsCount = roomsCountSetting;
 
@@ -348,6 +379,7 @@ class AnalyticsService {
         },
       },
       groups: groupsBreakdown,
+      calendar,
     };
   }
 
@@ -367,6 +399,7 @@ class AnalyticsService {
    * @param {Object} demand
    */
   async calculateOptimalForecast(demand = {}) {
+    const calendar = this.resolveCalendar(demand.month);
     const options = {
       tuition: this.settings.get('TUITION_MONTHLY'),
       ratePerChild: this.settings.get('EDUCATOR_PER_CHILD'),
@@ -382,10 +415,12 @@ class AnalyticsService {
       mealBasePerDay: this.settings.get('MEAL_BASE_PER_DAY'),
       mealPerExtraYear: this.settings.get('MEAL_PER_EXTRA_YEAR'),
       attendanceRate: demand.attendanceRate ?? this.settings.get('ATTENDANCE_RATE_PERCENT') / 100,
+      // Харчування — за робочими днями місяця прогнозу (Пн–Пт мінус свята), а не за сталими 21
+      workingDays: calendar.workingDays,
     };
 
     const rawResult = optimizeKindergartenCapacity(demand, options);
-    return formatOptimalForecastMoney(rawResult);
+    return { ...formatOptimalForecastMoney(rawResult), calendar };
   }
 }
 
