@@ -138,6 +138,36 @@ KEK Node.js team
 9. Денис Чудла ІПЗ-33 (https://github.com/denyschudla25-netizen): Dev
 10. Поп'юк Денис ІПЗ-33 (https://github.com/Densssss1): Dev
 
+##
+
+Виконана робота (Етап 5)
+
+- Свята в налаштуваннях (`settings`): додано ключ `holidays` (масив дат `YYYY-MM-DD`) за зразком `discountLevels` зі схемою Zod, дефолтом і seed на 2026–2027 роки. Змінювати може лише ADMIN, дублікати та невалідний формат дати дають 400, а календар одразу бачить нові свята.
+
+- Синхронізація оплат і констант: вирівняно логіку POST /billing/children/:id/payments із getChildBilling (врахування відсутностей для місячного плану та ігнорування для річного, сума строго дорівнює amountDue); винесено workingDaysPerMonth і attendanceRate у системні налаштування settings.definitions.js.
+
+- Білінг та цінник (Price-Tag): новий ендпоінт GET /billing/children/:childId/price-tag з деталізацією навчання (базова ставка, пільга дитини, знижка 12% за річний план) та харчування (ставка за віком, робочі дні, мінус відсутності); порівняння помісячного та річного планів з розрахунком економії й paidUntil; захист доступу через loadAccessibleChild та приховування службових полів.
+
+
+##
+
+18/11/2026
+
+Олександр Купина ІПЗ-32 (https://github.com/SashaKupyna): Team Lead
+Анатолій Кульчицький ІПЗ-32 (https://github.com/blackw1ndow): BA
+Олександр Милян ІПЗ-32 (https://github.com/AsterPy): QA
+Максим Романюк ІПЗ-33 (https://github.com/kubezen-stack): Dev
+Андрій Перегінць ІПЗ-33 (https://github.com/AndriiPerehinets): Dev
+Богдан Леонідов ІПЗ-32 (https://github.com/bohdawg): Dev
+Галас Анна-Софія ІПЗ-31 (https://github.com/anna-halas): Dev
+Максим Попович ІПЗ-33 (https://github.com/DecimusMM): Dev
+Денис Чудла ІПЗ-33 (https://github.com/denyschudla25-netizen): Dev
+Поп'юк Денис ІПЗ-33 (https://github.com/Densssss1): Dev
+
+
+##
+
+
 REQUIREMENTS
 
 1. Ролі користувачів (Actors)
