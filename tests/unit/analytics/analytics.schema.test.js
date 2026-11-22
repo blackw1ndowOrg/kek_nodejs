@@ -2,6 +2,7 @@ const {
   groupProfitSchema,
   totalProfitSchema,
   forecastSchema,
+  forecastScheduleSchema,
 } = require('../../../src/modules/analytics/analytics.schema');
 
 describe('Analytics Schema Validation', () => {
@@ -192,6 +193,30 @@ describe('Analytics Schema Validation', () => {
       );
       expect(() => forecastSchema.parse({ body: { threshold: -1 } })).toThrow();
       expect(() => forecastSchema.parse({ body: { threshold: 'invalid' } })).toThrow();
+    });
+  });
+
+  describe('forecastScheduleSchema', () => {
+    test('дефолтить body до порожнього об’єкта якщо не передано', () => {
+      const parsed = forecastScheduleSchema.parse({});
+      expect(parsed.body).toEqual({});
+    });
+
+    test('успішно валідує body зі strategy та параметрами прогнозу', () => {
+      const parsed = forecastScheduleSchema.parse({
+        body: {
+          targetChildrenCount: 120,
+          strategy: 'comfortQuality',
+          month: '2026-11',
+        },
+      });
+      expect(parsed.body.targetChildrenCount).toBe(120);
+      expect(parsed.body.strategy).toBe('comfortQuality');
+      expect(parsed.body.month).toBe('2026-11');
+    });
+
+    test('викидає помилку при невалідній кількості дітей', () => {
+      expect(() => forecastScheduleSchema.parse({ body: { targetChildrenCount: 301 } })).toThrow();
     });
   });
 });

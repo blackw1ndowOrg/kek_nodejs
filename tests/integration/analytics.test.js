@@ -35,6 +35,14 @@ const MOCK_ACTIVE_CHILDREN = [
   { id: 2, fullName: 'Тарас', discountPercent: 10, groupId: 2 },
 ];
 
+const MOCK_CLUBS = [
+  { id: 1, name: 'Музика' },
+  { id: 2, name: 'Англійська' },
+  { id: 3, name: 'Шахи' },
+  { id: 4, name: 'Спорт' },
+  { id: 5, name: 'Малювання' },
+];
+
 describe('Analytics API (Supertest)', () => {
   const app = createApp();
 
@@ -66,6 +74,7 @@ describe('Analytics API (Supertest)', () => {
       EDUCATOR: 1,
       ASSISTANT: 1,
     });
+    jest.spyOn(analyticsRepository, 'findClubs').mockResolvedValue(MOCK_CLUBS);
   });
 
   afterEach(() => {
@@ -82,6 +91,11 @@ describe('Analytics API (Supertest)', () => {
 
       const res3 = await request(app).post(`${BASE}/forecast`).send({ targetChildrenCount: 150 });
       expect(res3.status).toBe(StatusCodes.UNAUTHORIZED);
+
+      const res4 = await request(app)
+        .post(`${BASE}/forecast/schedule`)
+        .send({ targetChildrenCount: 150 });
+      expect(res4.status).toBe(StatusCodes.UNAUTHORIZED);
     });
 
     test.each(['PARENT', 'TEACHER'])(
@@ -102,6 +116,12 @@ describe('Analytics API (Supertest)', () => {
           .set('Authorization', tokenFor(role))
           .send({ targetChildrenCount: 150 });
         expect(resForecast.status).toBe(StatusCodes.FORBIDDEN);
+
+        const resForecastSchedule = await request(app)
+          .post(`${BASE}/forecast/schedule`)
+          .set('Authorization', tokenFor(role))
+          .send({ targetChildrenCount: 150 });
+        expect(resForecastSchedule.status).toBe(StatusCodes.FORBIDDEN);
       }
     );
 
@@ -121,6 +141,12 @@ describe('Analytics API (Supertest)', () => {
         .set('Authorization', tokenFor(role))
         .send({ targetChildrenCount: 150 });
       expect(resForecast.status).toBe(StatusCodes.OK);
+
+      const resForecastSchedule = await request(app)
+        .post(`${BASE}/forecast/schedule`)
+        .set('Authorization', tokenFor(role))
+        .send({ targetChildrenCount: 150 });
+      expect(resForecastSchedule.status).toBe(StatusCodes.OK);
     });
   });
 
@@ -653,6 +679,93 @@ describe('Analytics API (Supertest)', () => {
       );
       expect(res.body.requestedDemand.totalChildren).toBe(24);
       expect(res.body.recommended.totalAdmitted).toBe(24);
+    });
+  });
+
+  describe('POST /api/v1/analytics/forecast/schedule', () => {
+    test('успішне прогнозування розкладу для targetChildrenCount = 150: 200 OK з валідним розкладом', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast/schedule`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 150 });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.feasible).toBe(true);
+      expect(res.body.strategy).toBe('recommended');
+      expect(res.body.groupsCount).toBeGreaterThanOrEqual(8);
+      expect(res.body.childrenCount).toBe(150);
+      expect(res.body.clubsCount).toBe(5);
+      expect(res.body.maxFeasibleGroups).toBe(15);
+      expect(res.body.groups.length).toBe(res.body.groupsCount);
+      expect(res.body.slots.length).toBeGreaterThan(0);
+      expect(res.body.summary.lessonSlots).toBeGreaterThan(0);
+      expect(res.body.summary.walkSlots).toBeGreaterThan(0);
+      expect(res.body.summary.mealSlots).toBeGreaterThan(0);
+      expect(res.body.summary.teacherWorkload.utilizationRatePercent).toBeGreaterThan(0);
+      expect(res.body.conflicts).toEqual([]);
+      expect(res.body.calendar).toBeDefined();
+    });
+
+    test('прогнозування розкладу для вікового попиту { 2: 15, 3: 15, 4: 15, 5: 15 }', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast/schedule`)
+        .set('Authorization', tokenFor('MANAGER'))
+        .send({ 2: 15, 3: 15, 4: 15, 5: 15, month: '2026-11' });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.feasible).toBe(true);
+      expect(res.body.childrenCount).toBe(60);
+      expect(res.body.calendar).toEqual({ month: '2026-11', workingDays: 21 });
+      expect(res.body.groups.some((g) => g.age === 2)).toBe(true);
+      expect(res.body.slots.every((s) => s.dayOfWeek >= 1 && s.dayOfWeek <= 5)).toBe(true);
+    });
+
+    test('підтримка вибору конкретної стратегії (наприклад minimalInfrastructure)', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast/schedule`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 150, strategy: 'minimalInfrastructure' });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.feasible).toBe(true);
+      expect(res.body.strategy).toBe('minimalInfrastructure');
+      expect(res.body.groupsCount).toBe(8); // 150 / 20 = 8 груп
+    });
+
+    test('порожній запит або targetChildrenCount = 0 повертає 200 OK з пустим розкладом', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast/schedule`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 0 });
+
+      expect(res.status).toBe(StatusCodes.OK);
+      expect(res.body.feasible).toBe(true);
+      expect(res.body.groupsCount).toBe(0);
+      expect(res.body.childrenCount).toBe(0);
+      expect(res.body.groups).toEqual([]);
+      expect(res.body.slots).toEqual([]);
+      expect(res.body.summary.totalSlots).toBe(0);
+      expect(res.body.conflicts).toEqual([]);
+    });
+
+    test('невалідний month -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast/schedule`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ month: 'invalid-month' });
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
+    });
+
+    test('targetChildrenCount > 300 -> 400 VALIDATION_ERROR', async () => {
+      const res = await request(app)
+        .post(`${BASE}/forecast/schedule`)
+        .set('Authorization', tokenFor('ADMIN'))
+        .send({ targetChildrenCount: 350 });
+
+      expect(res.status).toBe(StatusCodes.BAD_REQUEST);
+      expect(res.body.error.code).toBe(ErrorCodes.VALIDATION_ERROR);
     });
   });
 });

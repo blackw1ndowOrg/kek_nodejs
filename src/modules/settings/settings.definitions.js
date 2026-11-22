@@ -56,7 +56,7 @@ const SETTING_DEFINITIONS = Object.freeze({
   attendanceRatePercent: { default: 80, schema: percent('Attendance rate', 0) },
   groupExtraPayThreshold: { default: 12, schema: count('Extra pay threshold', 0) },
   educatorPerChild: { default: 200000, schema: money('Educator: rate per child') },
-  educatorExtraPay: { default: 300000, schema: money('Educator: extra pay', 0) },
+  educatorExtraPay: { default: 500000, schema: money('Educator: extra pay', 0) },
   assistantSalary: { default: 2000000, schema: money('Assistant: base salary') },
   assistantExtraPay: { default: 300000, schema: money('Assistant: extra pay', 0) },
   clubTeacherSalary: { default: 4000000, schema: money('Club teacher: base salary') },
