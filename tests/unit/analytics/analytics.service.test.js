@@ -7,7 +7,10 @@ const {
   DEFAULT_CLUB_TEACHERS_COUNT,
   DEFAULT_MANAGERS_COUNT,
   DEFAULT_TOTAL_ROOMS_COUNT,
+  DEFAULT_CLUBS,
+  TEACHER_WEEKLY_CAPACITY,
 } = require('../../../src/modules/analytics/analytics.service');
+const { ScheduleCapacityError } = require('../../../src/domain/schedule');
 const { NotFoundError, BadRequestError } = require('../../../src/errors/AppError');
 
 describe('AnalyticsService', () => {
@@ -19,7 +22,7 @@ describe('AnalyticsService', () => {
     TUITION_MONTHLY: 1500000,
     DISCOUNT_LEVELS: [10, 20, 30],
     EDUCATOR_PER_CHILD: 200000,
-    EDUCATOR_EXTRA_PAY: 300000,
+    EDUCATOR_EXTRA_PAY: 500000,
     ASSISTANT_SALARY: 2000000,
     ASSISTANT_EXTRA_PAY: 300000,
     GROUP_EXTRA_PAY_THRESHOLD: 12,
@@ -43,6 +46,7 @@ describe('AnalyticsService', () => {
       findAllActiveChildren: jest.fn(),
       findAllGroupsWithActiveChildren: jest.fn(),
       countActiveStaffByType: jest.fn().mockResolvedValue(null),
+      findClubs: jest.fn().mockResolvedValue([]),
     };
     mockSettings = {
       get: jest.fn((key) => DEFAULT_SETTINGS[key]),
@@ -55,6 +59,8 @@ describe('AnalyticsService', () => {
     expect(DEFAULT_CLUB_TEACHERS_COUNT).toBe(5);
     expect(DEFAULT_MANAGERS_COUNT).toBe(1);
     expect(DEFAULT_TOTAL_ROOMS_COUNT).toBe(20);
+    expect(DEFAULT_CLUBS.length).toBe(5);
+    expect(TEACHER_WEEKLY_CAPACITY).toBe(45);
   });
 
   describe('toMoney', () => {
@@ -310,29 +316,29 @@ describe('AnalyticsService', () => {
       expect(res.income.total.uah).toBe(214500);
 
       // Витрати:
-      // Вихователь: 15 * 2 000 + (15 - 12) * 3 000 = 30 000 + 9 000 = 39 000 грн (3 900 000 коп)
-      expect(res.expenses.educatorSalary.uah).toBe(39000);
-      expect(res.expenses.educatorSalary.kopiykas).toBe(3900000);
+      // Вихователь: 15 * 2 000 + (15 - 12) * 5 000 = 30 000 + 15 000 = 45 000 грн (4 500 000 коп)
+      expect(res.expenses.educatorSalary.uah).toBe(45000);
+      expect(res.expenses.educatorSalary.kopiykas).toBe(4500000);
       // Помічник: 20 000 + (15 - 12) * 3 000 = 29 000 грн (2 900 000 коп)
       expect(res.expenses.assistantSalary.uah).toBe(29000);
       expect(res.expenses.assistantSalary.kopiykas).toBe(2900000);
       // Оренда: 50 000 грн (5 000 000 коп)
       expect(res.expenses.roomRent.uah).toBe(50000);
       expect(res.expenses.roomRent.kopiykas).toBe(5000000);
-      // Разом витрати: 39 000 + 29 000 + 50 000 = 118 000 грн (11 800 000 коп)
-      expect(res.expenses.total.uah).toBe(118000);
-      expect(res.expenses.total.kopiykas).toBe(11800000);
+      // Разом витрати: 45 000 + 29 000 + 50 000 = 124 000 грн (12 400 000 коп)
+      expect(res.expenses.total.uah).toBe(124000);
+      expect(res.expenses.total.kopiykas).toBe(12400000);
 
-      // Профіт: 214 500 - 118 000 = 96 500 грн (9 650 000 коп)
-      expect(res.profit.uah).toBe(96500);
-      expect(res.profit.kopiykas).toBe(9650000);
+      // Профіт: 214 500 - 124 000 = 90 500 грн (9 050 000 коп)
+      expect(res.profit.uah).toBe(90500);
+      expect(res.profit.kopiykas).toBe(9050000);
 
       // Перевірка детальної розбивки breakdown
       expect(res.breakdown.income.tuition.uah).toBe(214500);
-      expect(res.breakdown.expenses.educatorSalary.uah).toBe(39000);
+      expect(res.breakdown.expenses.educatorSalary.uah).toBe(45000);
       expect(res.breakdown.expenses.assistantSalary.uah).toBe(29000);
       expect(res.breakdown.expenses.roomRent.uah).toBe(50000);
-      expect(res.breakdown.expenses.total.uah).toBe(118000);
+      expect(res.breakdown.expenses.total.uah).toBe(124000);
     });
 
     test('використовує дефолтну вартість кімнати, якщо кімната в групі не має monthlyCost або room=null', async () => {
@@ -526,7 +532,7 @@ describe('AnalyticsService', () => {
       //   2 * 13 500 = 27 000
       //   2 * 10 500 = 21 000
       //   Сума групи 2: 198 000 грн
-      //   Вихователь: 14 * 2 000 + 2 * 3 000 = 34 000 грн
+      //   Вихователь: 14 * 2 000 + 2 * 5 000 = 38 000 грн
       //   Помічник: 20 000 + 2 * 3 000 = 26 000 грн
       // Додатково 1 активна дитина без групи зі знижкою 20%: 12 000 грн
       // Загальний дохід: 150 000 + 198 000 + 12 000 = 360 000 грн (36 000 000 коп)
@@ -578,9 +584,9 @@ describe('AnalyticsService', () => {
       expect(res.income.tuition.kopiykas).toBe(34800000);
 
       // Витрати:
-      // Вихователі: 20 000 + 34 000 = 54 000 грн (5 400 000 коп)
-      expect(res.expenses.educatorsSalary.uah).toBe(54000);
-      expect(res.expenses.educatorsSalary.kopiykas).toBe(5400000);
+      // Вихователі: 20 000 + 38 000 = 58 000 грн (5 800 000 коп)
+      expect(res.expenses.educatorsSalary.uah).toBe(58000);
+      expect(res.expenses.educatorsSalary.kopiykas).toBe(5800000);
       // Помічники: 20 000 + 26 000 = 46 000 грн (4 600 000 коп)
       expect(res.expenses.assistantsSalary.uah).toBe(46000);
       expect(res.expenses.assistantsSalary.kopiykas).toBe(4600000);
@@ -588,17 +594,17 @@ describe('AnalyticsService', () => {
       expect(res.expenses.clubTeachersSalary.uah).toBe(200000);
       // 1 менеджер: 80 000 грн (8 000 000 коп)
       expect(res.expenses.managerSalary.uah).toBe(80000);
-      // Разом персонал: 54 000 + 46 000 + 200 000 + 80 000 = 380 000 грн (38 000 000 коп)
-      expect(res.expenses.staffSalaries.uah).toBe(380000);
+      // Разом персонал: 58 000 + 46 000 + 200 000 + 80 000 = 384 000 грн (38 400 000 коп)
+      expect(res.expenses.staffSalaries.uah).toBe(384000);
       // Оренда 20 кімнат: 1 000 000 грн (100 000 000 коп)
       expect(res.expenses.roomsRent.uah).toBe(1000000);
-      // Разом витрати: 380 000 + 1 000 000 = 1 380 000 грн (138 000 000 коп)
-      expect(res.expenses.total.uah).toBe(1380000);
-      expect(res.expenses.total.kopiykas).toBe(138000000);
+      // Разом витрати: 384 000 + 1 000 000 = 1 384 000 грн (138 400 000 коп)
+      expect(res.expenses.total.uah).toBe(1384000);
+      expect(res.expenses.total.kopiykas).toBe(138400000);
 
-      // Чистий профіт: 348 000 - 1 380 000 = -1 032 000 грн (-103 200 000 коп)
-      expect(res.profit.uah).toBe(-1032000);
-      expect(res.profit.kopiykas).toBe(-103200000);
+      // Чистий профіт: 348 000 - 1 384 000 = -1 036 000 грн (-103 600 000 коп)
+      expect(res.profit.uah).toBe(-1036000);
+      expect(res.profit.kopiykas).toBe(-103600000);
 
       // Перевірка списку груп groups
       expect(res.groups).toHaveLength(2);
@@ -1153,6 +1159,160 @@ describe('AnalyticsService', () => {
       test('поточний момент за замовчуванням — new Date()', () => {
         expect(new AnalyticsService(mockRepo, mockSettings).now()).toBeInstanceOf(Date);
       });
+    });
+  });
+
+  describe('calculateForecastSchedule', () => {
+    test('успішний прогноз розкладу для targetChildrenCount = 120 (feasible: true)', async () => {
+      const res = await service.calculateForecastSchedule({ targetChildrenCount: 120 });
+
+      expect(res.feasible).toBe(true);
+      expect(res.groupsCount).toBeGreaterThanOrEqual(6);
+      expect(res.childrenCount).toBe(120);
+      expect(res.clubsCount).toBe(5);
+      expect(res.maxFeasibleGroups).toBe(15);
+      expect(res.groups.length).toBe(res.groupsCount);
+      expect(res.slots.length).toBeGreaterThan(0);
+      expect(res.slots[0]).toHaveProperty('groupId');
+      expect(res.slots[0]).toHaveProperty('dayOfWeek');
+      expect(res.slots[0]).toHaveProperty('activity');
+      expect(res.slots[0]).toHaveProperty('clubName');
+      expect(res.summary.totalSlots).toBe(res.slots.length);
+      expect(res.summary.lessonSlots).toBeGreaterThan(0);
+      expect(res.summary.walkSlots).toBeGreaterThan(0);
+      expect(res.summary.mealSlots).toBeGreaterThan(0);
+      expect(res.summary.teacherWorkload.maxCapacityPerTeacher).toBe(45);
+      expect(res.summary.teacherWorkload.utilizationRatePercent).toBeGreaterThan(0);
+      expect(res.calendar).toEqual({ month: '2026-11', workingDays: 21 });
+      expect(res.conflicts).toEqual([]);
+    });
+
+    test('коректно повертає пустий розклад для 0 дітей', async () => {
+      const res = await service.calculateForecastSchedule({ targetChildrenCount: 0 });
+
+      expect(res.feasible).toBe(true);
+      expect(res.groupsCount).toBe(0);
+      expect(res.childrenCount).toBe(0);
+      expect(res.groups).toEqual([]);
+      expect(res.slots).toEqual([]);
+      expect(res.summary.totalSlots).toBe(0);
+      expect(res.summary.teacherWorkload.utilizationRatePercent).toBe(0);
+      expect(res.conflicts).toEqual([]);
+    });
+
+    test('використовує клуби з БД, якщо вони є', async () => {
+      const customClubs = [
+        { id: 10, name: 'Робототехніка' },
+        { id: 11, name: 'Плавання' },
+        { id: 12, name: 'Театр' },
+        { id: 13, name: 'Кераміка' },
+      ];
+      mockRepo.findClubs.mockResolvedValue(customClubs);
+
+      const res = await service.calculateForecastSchedule({ targetChildrenCount: 60 });
+
+      expect(res.feasible).toBe(true);
+      expect(res.clubsCount).toBe(4);
+      expect(res.maxFeasibleGroups).toBe(12); // 4 * 3
+      const clubSlot = res.slots.find((s) => s.activity === 'CLUB');
+      expect(clubSlot).toBeDefined();
+      expect(['Робототехніка', 'Плавання', 'Театр', 'Кераміка']).toContain(clubSlot.clubName);
+    });
+
+    test('підтримує вказання конкретної стратегії (наприклад minimalInfrastructure, COMFORT_QUALITY)', async () => {
+      const minimalRes = await service.calculateForecastSchedule({
+        targetChildrenCount: 150,
+        strategy: 'minimalInfrastructure',
+      });
+      expect(minimalRes.feasible).toBe(true);
+      expect(minimalRes.groupsCount).toBe(8); // 150 / 20 = 8 груп
+      expect(minimalRes.strategy).toBe('minimalInfrastructure');
+
+      const comfortRes = await service.calculateForecastSchedule({
+        targetChildrenCount: 150,
+        strategy: 'COMFORT_QUALITY',
+      });
+      expect(comfortRes.feasible).toBe(true);
+      expect(comfortRes.strategy).toBe('COMFORT_QUALITY');
+      expect(comfortRes.groupsCount).toBeGreaterThanOrEqual(minimalRes.groupsCount);
+    });
+
+    test('обробляє ScheduleCapacityError коли генератор не може розмістити групи (feasible: false)', async () => {
+      const mockGenerator = jest.fn(() => {
+        throw new ScheduleCapacityError('Груп (16) більше, ніж можна розвести');
+      });
+      const failingService = new AnalyticsService(
+        mockRepo,
+        mockSettings,
+        () => NOVEMBER_2026,
+        mockGenerator
+      );
+
+      const res = await failingService.calculateForecastSchedule({ targetChildrenCount: 120 });
+
+      expect(res.feasible).toBe(false);
+      expect(res.failureReason).toContain('Груп (16) більше, ніж можна розвести');
+      expect(res.slots).toEqual([]);
+      expect(res.summary.totalSlots).toBe(0);
+    });
+
+    test('прокидає невідомі помилки генератора', async () => {
+      const mockGenerator = jest.fn(() => {
+        throw new Error('Fatal error');
+      });
+      const errorService = new AnalyticsService(
+        mockRepo,
+        mockSettings,
+        () => NOVEMBER_2026,
+        mockGenerator
+      );
+
+      await expect(
+        errorService.calculateForecastSchedule({ targetChildrenCount: 120 })
+      ).rejects.toThrow('Fatal error');
+    });
+
+    test('повертає feasible: false та список конфліктів, якщо розклад має колізії', async () => {
+      // Імітуємо слот, який виходить за межі дня або має конфлікт
+      const mockGenerator = jest.fn(() => [
+        {
+          groupId: 1,
+          dayOfWeek: 1,
+          startMinute: 400, // до 08:30 (OUT_OF_HOURS)
+          endMinute: 450,
+          activity: 'CLUB',
+          clubId: 1,
+        },
+      ]);
+      const conflictService = new AnalyticsService(
+        mockRepo,
+        mockSettings,
+        () => NOVEMBER_2026,
+        mockGenerator
+      );
+
+      const res = await conflictService.calculateForecastSchedule({ targetChildrenCount: 40 });
+
+      expect(res.feasible).toBe(false);
+      expect(res.conflicts.length).toBeGreaterThan(0);
+    });
+
+    test('доповнює віртуальні групи, якщо ageBreakdown містить менше груп ніж totalGroups', async () => {
+      const customService = new AnalyticsService(mockRepo, mockSettings, () => NOVEMBER_2026);
+      jest.spyOn(customService, 'calculateOptimalForecast').mockResolvedValue({
+        recommended: {
+          totalGroups: 4,
+          totalAdmitted: 40,
+          ageBreakdown: {
+            2: { groupSizes: [10] }, // лише 1 група в ageBreakdown при totalGroups = 4
+          },
+        },
+        calendar: { month: '2026-11', workingDays: 21 },
+      });
+
+      const res = await customService.calculateForecastSchedule();
+      expect(res.groups.length).toBe(4);
+      expect(res.groups[1].name).toBe('Група 2');
     });
   });
 

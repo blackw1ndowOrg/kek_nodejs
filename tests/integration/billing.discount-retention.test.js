@@ -67,7 +67,7 @@ describe('Discount Retention Integration Scenarios (Billing & Analytics)', () =>
       if (key === 'HOLIDAYS') return [];
       if (key === 'ATTENDANCE_RATE_PERCENT') return 80;
       if (key === 'EDUCATOR_PER_CHILD') return 200000;
-      if (key === 'EDUCATOR_EXTRA_PAY') return 300000;
+      if (key === 'EDUCATOR_EXTRA_PAY') return 500000;
       if (key === 'ASSISTANT_SALARY') return 2000000;
       if (key === 'ASSISTANT_EXTRA_PAY') return 300000;
       if (key === 'GROUP_EXTRA_PAY_THRESHOLD') return 12;
@@ -107,7 +107,7 @@ describe('Discount Retention Integration Scenarios (Billing & Analytics)', () =>
       if (key === 'HOLIDAYS') return [];
       if (key === 'ATTENDANCE_RATE_PERCENT') return 80;
       if (key === 'EDUCATOR_PER_CHILD') return 200000;
-      if (key === 'EDUCATOR_EXTRA_PAY') return 300000;
+      if (key === 'EDUCATOR_EXTRA_PAY') return 500000;
       if (key === 'ASSISTANT_SALARY') return 2000000;
       if (key === 'ASSISTANT_EXTRA_PAY') return 300000;
       if (key === 'GROUP_EXTRA_PAY_THRESHOLD') return 12;

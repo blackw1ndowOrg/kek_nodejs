@@ -15,6 +15,7 @@ describe('AnalyticsController', () => {
       getGroupProfit: jest.fn(),
       getTotalProfit: jest.fn(),
       calculateOptimalForecast: jest.fn(),
+      calculateForecastSchedule: jest.fn(),
     };
     controller = new AnalyticsController(mockService);
     mockReq = {
@@ -76,6 +77,27 @@ describe('AnalyticsController', () => {
       });
       expect(mockRes.status).toHaveBeenCalledWith(StatusCodes.OK);
       expect(mockRes.json).toHaveBeenCalledWith(forecastData);
+    });
+  });
+
+  describe('getForecastSchedule', () => {
+    test('викликає service.calculateForecastSchedule та повертає статус 200 із розкладом', async () => {
+      mockReq.body = { targetChildrenCount: 150, strategy: 'recommended' };
+      const scheduleData = {
+        feasible: true,
+        groupsCount: 8,
+        slots: [],
+      };
+      mockService.calculateForecastSchedule.mockResolvedValue(scheduleData);
+
+      await controller.getForecastSchedule(mockReq, mockRes);
+
+      expect(mockService.calculateForecastSchedule).toHaveBeenCalledWith({
+        targetChildrenCount: 150,
+        strategy: 'recommended',
+      });
+      expect(mockRes.status).toHaveBeenCalledWith(StatusCodes.OK);
+      expect(mockRes.json).toHaveBeenCalledWith(scheduleData);
     });
   });
 });

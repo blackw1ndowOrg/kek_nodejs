@@ -216,7 +216,7 @@ describe('Staff Integration Tests (Supertest)', () => {
         .set('Authorization', `Bearer ${adminToken}`);
 
       expect(res.status).toBe(StatusCodes.OK);
-      expect(res.body.salary).toBe(3900000);
+      expect(res.body.salary).toBe(4500000);
       expect(res.body.details.childrenCount).toBe(15);
     });
 

@@ -10,7 +10,7 @@ function assertGroupSize(childrenCount, maxGroupSize = 20) {
 
 const extraChildren = (childrenCount, threshold) => Math.max(0, childrenCount - threshold);
 
-function educatorSalary(childrenCount, ratePerChild = 200000, extraPay = 300000, threshold = 12) {
+function educatorSalary(childrenCount, ratePerChild = 200000, extraPay = 500000, threshold = 12) {
   assertGroupSize(childrenCount);
   return ratePerChild * childrenCount + extraPay * extraChildren(childrenCount, threshold);
 }

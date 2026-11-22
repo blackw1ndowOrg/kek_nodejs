@@ -186,4 +186,18 @@ describe('AnalyticsRepository', () => {
       });
     });
   });
+
+  describe('findClubs', () => {
+    test('викликає club.findMany з вибіркою id, name та сортуванням за id', async () => {
+      mockDb.club = { findMany: jest.fn().mockResolvedValue([{ id: 1, name: 'Музика' }]) };
+
+      const result = await repo.findClubs();
+
+      expect(mockDb.club.findMany).toHaveBeenCalledWith({
+        select: { id: true, name: true },
+        orderBy: { id: 'asc' },
+      });
+      expect(result).toEqual([{ id: 1, name: 'Музика' }]);
+    });
+  });
 });

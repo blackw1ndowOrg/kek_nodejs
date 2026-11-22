@@ -143,6 +143,16 @@ class AnalyticsRepository {
     }
     return result;
   }
+
+  /**
+   * Отримує список активних гуртків для симуляції розкладу
+   */
+  async findClubs() {
+    return this.db.club.findMany({
+      select: { id: true, name: true },
+      orderBy: { id: 'asc' },
+    });
+  }
 }
 
 const analyticsRepository = new AnalyticsRepository();

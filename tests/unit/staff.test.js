@@ -419,8 +419,8 @@ describe('Staff Module - Unit Tests', () => {
 
         const salaryInfo = await service.getStaffSalary(1);
 
-        // 15 дітей: 15 * 200_000 + 3 * 300_000 = 3_000_000 + 900_000 = 3_900_000 копійок
-        expect(salaryInfo.salary).toBe(3900000);
+        // 15 дітей: 15 * 200_000 + 3 * 500_000 = 3_000_000 + 1_500_000 = 4_500_000 копійок
+        expect(salaryInfo.salary).toBe(4500000);
         expect(salaryInfo.details.childrenCount).toBe(15);
         expect(salaryInfo.details.groupName).toBe('Сонечко');
       });
@@ -710,7 +710,7 @@ describe('Staff Module - Unit Tests', () => {
       const req = { params: { id: 1 } };
       mockService.getStaffSalary.mockResolvedValueOnce({
         staffId: 1,
-        salary: 3900000,
+        salary: 4500000,
         type: 'EDUCATOR',
       });
 
@@ -718,7 +718,7 @@ describe('Staff Module - Unit Tests', () => {
 
       expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
       expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ staffId: 1, salary: 3900000 })
+        expect.objectContaining({ staffId: 1, salary: 4500000 })
       );
     });
   });

@@ -101,10 +101,19 @@ const forecastSchema = z.object({
   body: forecastBodySchema.optional().default({}),
 });
 
+const forecastScheduleBodySchema = forecastBodySchema.extend({
+  strategy: z.string().optional(),
+});
+
+const forecastScheduleSchema = z.object({
+  body: forecastScheduleBodySchema.optional().default({}),
+});
+
 module.exports = {
   groupProfitSchema,
   totalProfitSchema,
   forecastSchema,
+  forecastScheduleSchema,
   positiveId,
   attendanceRateSchema,
 };

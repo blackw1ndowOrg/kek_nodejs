@@ -2561,3 +2561,70 @@ paths:
                     description: Граничні показники (додаткова дитина, поради щодо черги)
                   calendar:
                     $ref: '#/components/schemas/CalculationCalendar'
+
+  /api/v1/analytics/forecast/schedule:
+    post:
+      summary: Прогнозування та моделювання розкладу занять гуртків для запланованих груп (ADMIN, MANAGER)
+      tags:
+        - Analytics
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targetChildrenCount:
+                  type: integer
+                  minimum: 0
+                  maximum: 300
+                  example: 150
+                strategy:
+                  type: string
+                  example: recommended
+                month:
+                  type: string
+                  pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+                  example: '2026-11'
+      responses:
+        '200':
+          description: Згенерований розклад занять гуртків та перевірка його здійсненності
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  feasible:
+                    type: boolean
+                    example: true
+                  strategy:
+                    type: string
+                    example: recommended
+                  groupsCount:
+                    type: integer
+                    example: 8
+                  childrenCount:
+                    type: integer
+                    example: 150
+                  clubsCount:
+                    type: integer
+                    example: 5
+                  maxFeasibleGroups:
+                    type: integer
+                    example: 15
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                  slots:
+                    type: array
+                    items:
+                      type: object
+                  summary:
+                    type: object
+                  calendar:
+                    $ref: '#/components/schemas/CalculationCalendar'
+                  conflicts:
+                    type: array
+                    items:
+                      type: object

@@ -8,6 +8,13 @@ const {
 } = require('../../domain/salary');
 const { optimizeKindergartenCapacity } = require('../../domain/forecast');
 const { currentMonth, workingDaysInMonth } = require('../../domain/calendar');
+const {
+  ACTIVITY,
+  ScheduleCapacityError,
+  generateSchedule,
+  validateSchedule,
+  maxGroupsFor,
+} = require('../../domain/schedule');
 const { toMoney } = require('../../domain/money');
 const { settingsService } = require('../settings/settings.service');
 const { analyticsRepository } = require('./analytics.repository');
@@ -16,6 +23,15 @@ const DEFAULT_CLUB_TEACHERS_COUNT = 5;
 const DEFAULT_MANAGERS_COUNT = 1;
 const DEFAULT_TOTAL_ROOMS_COUNT = 20;
 const DEFAULT_CLUB_ROOMS_COUNT = 5;
+
+const DEFAULT_CLUBS = Object.freeze([
+  { id: 1, name: 'Музика' },
+  { id: 2, name: 'Англійська' },
+  { id: 3, name: 'Шахи' },
+  { id: 4, name: 'Спорт' },
+  { id: 5, name: 'Малювання' },
+]);
+const TEACHER_WEEKLY_CAPACITY = 45; // 9 занять на день × 5 робочих днів на тиждень
 
 function isStaffActive(staffRelation, staffId) {
   if (staffId === null || staffRelation === null) {
@@ -38,11 +54,13 @@ class AnalyticsService {
   constructor(
     repository = analyticsRepository,
     settings = settingsService,
-    now = () => new Date()
+    now = () => new Date(),
+    scheduleGenerator = generateSchedule
   ) {
     this.repository = repository;
     this.settings = settings;
     this.now = now;
+    this.scheduleGenerator = scheduleGenerator;
   }
 
   /**
@@ -422,6 +440,161 @@ class AnalyticsService {
     const rawResult = optimizeKindergartenCapacity(demand, options);
     return { ...formatOptimalForecastMoney(rawResult), calendar };
   }
+
+  /**
+   * Формує прогноз розкладу занять гуртків на тиждень для запланованих груп.
+   * Перевіряє математичну та часову здійсненність (feasibility) розкладу,
+   * розраховує слоти, завантаженість викладачів та відсутність конфліктів у кабінетах.
+   */
+  async calculateForecastSchedule(demand = {}) {
+    const forecast = await this.calculateOptimalForecast(demand);
+    const strategyKey = demand.strategy || 'recommended';
+
+    let chosenConfig = forecast.recommended;
+    if (strategyKey !== 'recommended') {
+      if (forecast.strategies?.[strategyKey]) {
+        chosenConfig = forecast.strategies[strategyKey];
+      } else {
+        const match = Object.values(forecast.strategies || {}).find(
+          (s) =>
+            s.strategyCode?.toLowerCase() === strategyKey.toLowerCase() ||
+            s.strategyCode === strategyKey
+        );
+        chosenConfig = match || forecast.recommended;
+      }
+    }
+
+    const totalGroups = chosenConfig?.groupsCount ?? chosenConfig?.totalGroups ?? 0;
+    const calendar = forecast.calendar;
+
+    if (totalGroups === 0) {
+      return {
+        feasible: true,
+        strategy: strategyKey,
+        groupsCount: 0,
+        childrenCount: 0,
+        clubsCount: 0,
+        maxFeasibleGroups: 0,
+        groups: [],
+        slots: [],
+        summary: {
+          totalSlots: 0,
+          lessonSlots: 0,
+          walkSlots: 0,
+          mealSlots: 0,
+          teacherWorkload: {
+            lessonsPerWeekPerTeacher: 0,
+            maxCapacityPerTeacher: TEACHER_WEEKLY_CAPACITY,
+            utilizationRatePercent: 0,
+          },
+        },
+        calendar,
+        conflicts: [],
+      };
+    }
+
+    let dbClubs = [];
+    try {
+      if (typeof this.repository.findClubs === 'function') {
+        dbClubs = (await this.repository.findClubs()) || [];
+      }
+    } catch {
+      dbClubs = [];
+    }
+    const clubs = dbClubs && dbClubs.length > 0 ? dbClubs : DEFAULT_CLUBS;
+    const clubsCount = clubs.length;
+    const maxFeasible = maxGroupsFor(clubsCount);
+
+    const groups = [];
+    let groupIdCounter = 1;
+    let totalChildren = 0;
+
+    if (chosenConfig?.ageBreakdown) {
+      for (let age = 2; age <= 5; age += 1) {
+        const ageData = chosenConfig.ageBreakdown[age];
+        const sizes = ageData?.groupSizes || [];
+        for (const size of sizes) {
+          groups.push({
+            id: groupIdCounter,
+            name: `Група ${groupIdCounter} (${age} р.)`,
+            age,
+            childrenCount: size,
+          });
+          totalChildren += size;
+          groupIdCounter += 1;
+        }
+      }
+    }
+
+    while (groups.length < totalGroups) {
+      groups.push({
+        id: groupIdCounter,
+        name: `Група ${groupIdCounter}`,
+        age: null,
+        childrenCount: 0,
+      });
+      groupIdCounter += 1;
+    }
+
+    let slots = [];
+    let conflicts = [];
+    let feasible;
+    let failureReason = null;
+
+    try {
+      slots = this.scheduleGenerator({ groups, clubs });
+      conflicts = validateSchedule(slots);
+      feasible = conflicts.length === 0;
+    } catch (err) {
+      if (err instanceof ScheduleCapacityError) {
+        feasible = false;
+        failureReason = err.message;
+      } else {
+        throw err;
+      }
+    }
+
+    const lessonSlots = slots.filter((s) => s.activity === ACTIVITY.CLUB).length;
+    const walkSlots = slots.filter((s) => s.activity === ACTIVITY.WALK).length;
+    const mealSlots = slots.filter((s) => s.activity === ACTIVITY.MEAL).length;
+
+    const lessonsPerTeacher = clubsCount > 0 ? lessonSlots / clubsCount : 0;
+    const utilization =
+      TEACHER_WEEKLY_CAPACITY > 0
+        ? Math.round((lessonsPerTeacher / TEACHER_WEEKLY_CAPACITY) * 1000) / 10
+        : 0;
+
+    const clubsMap = new Map(clubs.map((c) => [c.id, c.name]));
+    const enrichedSlots = slots.map((s) => ({
+      ...s,
+      clubName: s.clubId ? clubsMap.get(s.clubId) ?? null : null,
+    }));
+
+    return {
+      feasible,
+      ...(failureReason ? { failureReason } : {}),
+      strategy: strategyKey,
+      groupsCount: groups.length,
+      childrenCount: totalChildren || (chosenConfig?.totalAdmitted ?? 0),
+      clubsCount,
+      maxFeasibleGroups: maxFeasible,
+      groups,
+      slots: enrichedSlots,
+      summary: {
+        totalSlots: slots.length,
+        lessonSlots,
+        walkSlots,
+        mealSlots,
+        teacherWorkload: {
+          lessonsPerWeekPerTeacher: lessonsPerTeacher,
+          maxCapacityPerTeacher: TEACHER_WEEKLY_CAPACITY,
+          utilizationRatePercent: utilization,
+        },
+      },
+      calendar,
+      conflicts,
+    };
+  }
 }
 
 function formatVariantFinancials(cfg) {
@@ -538,4 +711,6 @@ module.exports = {
   DEFAULT_CLUB_TEACHERS_COUNT,
   DEFAULT_MANAGERS_COUNT,
   DEFAULT_TOTAL_ROOMS_COUNT,
+  DEFAULT_CLUBS,
+  TEACHER_WEEKLY_CAPACITY,
 };

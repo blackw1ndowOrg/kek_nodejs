@@ -274,14 +274,14 @@ describe('Staff Database Integration Tests (Real PostgreSQL)', () => {
       "getStaffSalary: розраховує зарплату на основі реальних зв'язків з дітьми у БД",
       async () => {
         // Вихователь ID 8 закріплений за групою "Дзвіночок" з 14 реальними дітьми (> 12)
-        // Розрахунок: 14 * 200_000 + (14 - 12) * 300_000 = 2_800_000 + 600_000 = 3_400_000 копійок (34 000 грн)
+        // Розрахунок: 14 * 200_000 + (14 - 12) * 500_000 = 2_800_000 + 1_000_000 = 3_800_000 копійок (38 000 грн)
         const salaryInfo = await staffService.getStaffSalary(8);
 
         expect(salaryInfo.staffId).toBe(8);
         expect(salaryInfo.type).toBe('EDUCATOR');
         expect(salaryInfo.details.childrenCount).toBe(14);
         expect(salaryInfo.details.groupName).toBe('Дзвіночок');
-        expect(salaryInfo.salary).toBe(3400000);
+        expect(salaryInfo.salary).toBe(3800000);
       }
     );
 
