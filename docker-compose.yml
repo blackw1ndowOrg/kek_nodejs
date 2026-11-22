@@ -16,5 +16,31 @@ services:
       timeout: 5s
       retries: 10
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kindergarten-app
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3000}:3000'
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      DATABASE_URL: postgresql://kg:kg@postgres:5432/kindergarten
+      JWT_SECRET: ${JWT_SECRET:-duzhe№potuzhnyi%meha9token089*^@}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-30m}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@kindergarten.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin123!}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-Password123!}
+      SEED_ON_STARTUP: ${SEED_ON_STARTUP:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run dev
+
 volumes:
   pgdata:
