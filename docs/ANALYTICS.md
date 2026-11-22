@@ -216,16 +216,7 @@ if (admitted <= g * threshold) {
 
 ---
 
-### 4.6. Парето-фільтрація альтернатив (`topVariants`)
-
-Серед усіх валідних конфігурацій алгоритм вибирає топ-3 варіанти, автоматично відсікаючи Парето-доміновані рішення:
-Конфігурація $A$ домінує конфігурацію $B$, якщо:
-$$N_{admitted}(A) \ge N_{admitted}(B) \quad \land \quad G_{groups}(A) \le G_{groups}(B) \quad \land \quad \Pi(A) \ge \Pi(B)$$
-Варіанти, які вимагають більше груп і персоналу, але приймають менше дітей і приносять менший прибуток, у вибірку керівника не потрапляють.
-
----
-
-### 4.7. Секція маржинального аналізу (`marginalEconomics`)
+### 4.6. Секція маржинального аналізу (`marginalEconomics`)
 
 Надає конкретні аналітичні довідки для прийняття управлінських рішень:
 
@@ -269,7 +260,6 @@ curl -X GET http://localhost:3000/api/v1/analytics/profit?month=2026-11 \
   "income": {
     "tuition": { "uah": 500000, "kopiykas": 50000000 },
     "meal": { "uah": 211680, "kopiykas": 21168000 },
-    "groupsTuition": { "uah": 500000, "kopiykas": 50000000 },
     "total": { "uah": 711680, "kopiykas": 71168000 }
   },
   "expenses": {
@@ -287,19 +277,10 @@ curl -X GET http://localhost:3000/api/v1/analytics/profit?month=2026-11 \
     "uah": -698320,
     "kopiykas": -69832000
   },
-  "netProfit": {
-    "uah": -698320,
-    "kopiykas": -69832000
-  },
   "rooms": {
     "total": 20,
     "occupied": 8,
-    "vacant": 12,
-    "cost": {
-      "total": { "uah": 1000000, "kopiykas": 100000000 },
-      "operating": { "uah": 400000, "kopiykas": 40000000 },
-      "idle": { "uah": 600000, "kopiykas": 60000000 }
-    }
+    "vacant": 12
   },
   "groups": [
     {
@@ -310,7 +291,6 @@ curl -X GET http://localhost:3000/api/v1/analytics/profit?month=2026-11 \
       "tuitionIncome": { "uah": 180000, "kopiykas": 18000000 },
       "mealIncome": { "uah": 80640, "kopiykas": 8064000 },
       "totalIncome": { "uah": 260640, "kopiykas": 26064000 },
-      "income": { "uah": 260640, "kopiykas": 26064000 },
       "expenses": { "uah": 94000, "kopiykas": 9400000 },
       "profit": { "uah": 166640, "kopiykas": 16664000 }
     }
@@ -341,9 +321,6 @@ curl -X GET http://localhost:3000/api/v1/analytics/groups/1/profit?month=2026-11
     "name": "Кімната 101",
     "cost": { "uah": 50000, "kopiykas": 5000000 }
   },
-  "tuitionIncome": { "uah": 180000, "kopiykas": 18000000 },
-  "mealIncome": { "uah": 100800, "kopiykas": 10080000 },
-  "totalIncome": { "uah": 280800, "kopiykas": 28080000 },
   "income": {
     "tuition": { "uah": 180000, "kopiykas": 18000000 },
     "meal": { "uah": 100800, "kopiykas": 10080000 },

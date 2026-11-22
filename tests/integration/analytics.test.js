@@ -293,11 +293,11 @@ describe('Analytics API (Supertest)', () => {
       expect(february.body.calendar).toEqual({ month: '2026-02', workingDays: 20 });
       expect(december.body.calendar).toEqual({ month: '2026-12', workingDays: 23 });
       // 2 трирічки × 400 грн × дні × 0,8
-      expect(current.body.mealIncome.uah).toBe(13440);
-      expect(february.body.mealIncome.uah).toBe(12800);
-      expect(december.body.mealIncome.uah).toBe(14720);
+      expect(current.body.income.meal.uah).toBe(13440);
+      expect(february.body.income.meal.uah).toBe(12800);
+      expect(december.body.income.meal.uah).toBe(14720);
       // Навчання й витрати від місяця не залежать
-      expect(february.body.tuitionIncome).toEqual(december.body.tuitionIncome);
+      expect(february.body.income.tuition).toEqual(december.body.income.tuition);
       expect(february.body.expenses).toEqual(december.body.expenses);
     });
 
@@ -355,7 +355,6 @@ describe('Analytics API (Supertest)', () => {
       // Чистий профіт: 41 940 - 1 304 000 = -1 262 060 грн (-126 206 000 коп)
       expect(res.body.profit.uah).toBe(-1262060);
       expect(res.body.profit.kopiykas).toBe(-126206000);
-      expect(res.body.netProfit.uah).toBe(-1262060);
       // unassignedChildren не повертається
       expect(res.body.unassignedChildren).toBeUndefined();
       // Перевірка розмежування кімнат

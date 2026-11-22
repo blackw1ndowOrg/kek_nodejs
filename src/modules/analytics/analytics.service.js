@@ -181,16 +181,9 @@ class AnalyticsService {
         name: group.room ? group.room.name : null,
         cost: toMoney(roomCost),
       },
-      tuitionIncome: toMoney(tuitionIncome),
-      mealIncome: toMoney(mealIncome),
-      totalIncome: toMoney(totalIncome),
       income: incomeBreakdown,
       expenses: expensesBreakdown,
       profit: profitMoney,
-      breakdown: {
-        income: incomeBreakdown,
-        expenses: expensesBreakdown,
-      },
       calendar,
     };
   }
@@ -284,7 +277,6 @@ class AnalyticsService {
         tuitionIncome: toMoney(gTuition),
         mealIncome: toMoney(gMeal),
         totalIncome: toMoney(gTotalIncome),
-        income: toMoney(gTotalIncome),
         expenses: toMoney(gExpenses),
         profit: toMoney(gTotalIncome - gExpenses),
       };
@@ -357,7 +349,6 @@ class AnalyticsService {
 
     return {
       activeChildrenCount: totalAssignedChildrenCount,
-      assignedChildrenCount: totalAssignedChildrenCount,
       groupsCount: groups.length,
       roomsCount,
       educatorsCount,
@@ -367,34 +358,10 @@ class AnalyticsService {
       income: incomeBreakdown,
       expenses: expensesBreakdown,
       profit: profitMoney,
-      netProfit: profitMoney,
-      breakdown: {
-        income: {
-          tuition: toMoney(totalTuitionIncome),
-          meal: toMoney(totalMealIncome),
-          total: toMoney(totalIncome),
-        },
-        expenses: {
-          educatorsSalary: toMoney(totalEducatorsSalary),
-          assistantsSalary: toMoney(totalAssistantsSalary),
-          clubTeachersSalary: toMoney(totalClubTeachersSalary),
-          managerSalary: toMoney(totalManagerSalary),
-          staffSalaries: toMoney(totalStaffSalaries),
-          roomsRent: toMoney(totalRoomsRent),
-          operatingRoomsRent: toMoney(operatingRoomsRent),
-          idleRoomsRent: toMoney(idleRoomsRent),
-          total: toMoney(totalExpenses),
-        },
-      },
       rooms: {
         total: roomsCount,
         occupied: occupiedRoomsCount,
         vacant: vacantRoomsCount,
-        cost: {
-          total: toMoney(totalRoomsRent),
-          operating: toMoney(operatingRoomsRent),
-          idle: toMoney(idleRoomsRent),
-        },
       },
       groups: groupsBreakdown,
       calendar,
@@ -600,55 +567,76 @@ class AnalyticsService {
 function formatVariantFinancials(cfg) {
   if (!cfg) return null;
   const financials = {
-    tuitionIncome: toMoney(cfg.tuitionIncome),
-    mealIncome: toMoney(cfg.mealIncome),
-    totalIncome: toMoney(cfg.totalIncome),
+    tuitionIncome: toMoney(cfg.financials?.tuitionIncome ?? cfg.tuitionIncome),
+    mealIncome: toMoney(cfg.financials?.mealIncome ?? cfg.mealIncome),
+    totalIncome: toMoney(cfg.financials?.totalIncome ?? cfg.totalIncome),
     expenses: {
-      roomsRent: toMoney(cfg.totalRoomsRent),
-      assistantsSalary: toMoney(cfg.totalAssistantsSalary),
-      educatorsSalary: toMoney(cfg.totalEducatorsSalary),
-      clubTeachersSalary: toMoney(cfg.totalClubTeachersSalary),
-      managerSalary: toMoney(cfg.totalManagerSalary),
-      totalStaffSalaries: toMoney(cfg.totalStaffSalaries),
-      totalExpenses: toMoney(cfg.totalExpenses),
+      roomsRent: toMoney(cfg.financials?.expenses?.roomsRent ?? cfg.totalRoomsRent),
+      assistantsSalary: toMoney(
+        cfg.financials?.expenses?.assistantsSalary ?? cfg.totalAssistantsSalary
+      ),
+      educatorsSalary: toMoney(cfg.financials?.expenses?.educatorsSalary ?? cfg.totalEducatorsSalary),
+      clubTeachersSalary: toMoney(
+        cfg.financials?.expenses?.clubTeachersSalary ?? cfg.totalClubTeachersSalary
+      ),
+      managerSalary: toMoney(cfg.financials?.expenses?.managerSalary ?? cfg.totalManagerSalary),
+      totalStaffSalaries: toMoney(
+        cfg.financials?.expenses?.totalStaffSalaries ?? cfg.totalStaffSalaries
+      ),
+      totalExpenses: toMoney(cfg.financials?.expenses?.totalExpenses ?? cfg.totalExpenses),
     },
-    netProfit: toMoney(cfg.netProfit),
+    netProfit: toMoney(cfg.financials?.netProfit ?? cfg.netProfit),
   };
 
   const formattedAgeBreakdown = {};
   if (cfg.ageBreakdown) {
     for (const [ageKey, ageData] of Object.entries(cfg.ageBreakdown)) {
       formattedAgeBreakdown[ageKey] = {
-        age: ageData.age,
-        demanded: ageData.demanded,
-        admitted: ageData.admitted,
-        rejected: ageData.rejected,
-        groupsCount: ageData.groupsCount,
-        groupSizes: ageData.groupSizes,
-        tuitionIncome: toMoney(ageData.tuitionIncome),
-        mealIncome: toMoney(ageData.mealIncome),
-        totalIncome: toMoney(ageData.totalIncome),
-        educatorsSalary: toMoney(ageData.educatorsSalary),
-        assistantsSalary: toMoney(ageData.assistantsSalary),
+        age: ageData.age ?? Number(ageKey),
+        demanded: ageData.demanded ?? 0,
+        admitted: ageData.admitted ?? 0,
+        rejected: ageData.rejected ?? 0,
+        groupsCount: ageData.groupsCount ?? 0,
+        groupSizes: ageData.groupSizes || [],
       };
     }
   }
 
-  return {
-    ...cfg,
-    groupsCount: cfg.totalGroups,
-    netProfit: toMoney(cfg.netProfit),
-    profitDifference:
-      cfg.profitDifference !== undefined ? toMoney(cfg.profitDifference) : undefined,
-    financials,
-    ageBreakdown: formattedAgeBreakdown,
-  };
+  const result = {};
+  if (cfg.name !== undefined) result.name = cfg.name;
+  if (cfg.rank !== undefined) result.rank = cfg.rank;
+  if (cfg.strategyCode !== undefined) result.strategyCode = cfg.strategyCode;
+  if (cfg.title !== undefined) result.title = cfg.title;
+  if (cfg.description !== undefined) result.description = cfg.description;
+  if (cfg.summary !== undefined) result.summary = cfg.summary;
+  if (cfg.mode !== undefined) result.mode = cfg.mode;
+
+  result.groupsCount = cfg.groupsCount ?? cfg.totalGroups ?? 0;
+  result.roomsOccupied = cfg.roomsOccupied ?? cfg.totalOccupiedRooms ?? 0;
+  result.groupRoomsOccupied = cfg.groupRoomsOccupied ?? cfg.occupiedGroupRooms ?? 0;
+  result.clubRoomsOccupied = cfg.clubRoomsOccupied ?? cfg.occupiedClubRooms ?? 0;
+  result.clubTeachersCount = cfg.clubTeachersCount ?? 0;
+  if (cfg.managersCount !== undefined) result.managersCount = cfg.managersCount;
+
+  result.totalAdmitted = cfg.totalAdmitted ?? cfg.admittedChildren ?? 0;
+  result.totalRejected = cfg.totalRejected ?? 0;
+  if (cfg.gVec) result.gVec = cfg.gVec;
+
+  result.netProfit = financials.netProfit;
+  if (cfg.profitDifference !== undefined) {
+    result.profitDifference = toMoney(cfg.profitDifference);
+  }
+
+  result.financials = financials;
+  if (cfg.ageBreakdown) {
+    result.ageBreakdown = formattedAgeBreakdown;
+  }
+
+  return result;
 }
 
 function formatOptimalForecastMoney(rawResult) {
   const recommended = rawResult.recommended ? formatVariantFinancials(rawResult.recommended) : null;
-
-  const topVariants = (rawResult.topVariants || []).map((v) => formatVariantFinancials(v));
 
   const strategies = {};
   if (rawResult.strategies) {
@@ -696,7 +684,6 @@ function formatOptimalForecastMoney(rawResult) {
       roomsStatus: rawMarginal.roomsStatus,
       waitlistAdvice,
     },
-    topVariants,
   };
 }
 

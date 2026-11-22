@@ -333,12 +333,12 @@ describe('AnalyticsService', () => {
       expect(res.profit.uah).toBe(90500);
       expect(res.profit.kopiykas).toBe(9050000);
 
-      // Перевірка детальної розбивки breakdown
-      expect(res.breakdown.income.tuition.uah).toBe(214500);
-      expect(res.breakdown.expenses.educatorSalary.uah).toBe(45000);
-      expect(res.breakdown.expenses.assistantSalary.uah).toBe(29000);
-      expect(res.breakdown.expenses.roomRent.uah).toBe(50000);
-      expect(res.breakdown.expenses.total.uah).toBe(124000);
+      // Перевірка детальної розбивки income та expenses
+      expect(res.income.tuition.uah).toBe(214500);
+      expect(res.expenses.educatorSalary.uah).toBe(45000);
+      expect(res.expenses.assistantSalary.uah).toBe(29000);
+      expect(res.expenses.roomRent.uah).toBe(50000);
+      expect(res.expenses.total.uah).toBe(124000);
     });
 
     test('використовує дефолтну вартість кімнати, якщо кімната в групі не має monthlyCost або room=null', async () => {
@@ -379,12 +379,11 @@ describe('AnalyticsService', () => {
       expect(res.age).toBe(3);
       expect(res.childrenCount).toBe(2);
       // Навчання: 15 000 + 13 500 = 28 500 грн
-      expect(res.tuitionIncome.uah).toBe(28500);
+      expect(res.income.tuition.uah).toBe(28500);
       // Харчування 3-річок (80% відвідуваність): (400 * 21 * 0.8) = 6 720 грн на дитину * 2 = 13 440 грн
-      expect(res.mealIncome.uah).toBe(13440);
-      expect(res.mealIncome.kopiykas).toBe(1344000);
+      expect(res.income.meal.uah).toBe(13440);
+      expect(res.income.meal.kopiykas).toBe(1344000);
       // Сумарний дохід: 28 500 + 13 440 = 41 940 грн
-      expect(res.totalIncome.uah).toBe(41940);
       expect(res.income.total.uah).toBe(41940);
       // Витрати: вихователь 4 000 + помічник 20 000 + оренда 50 000 = 74 000 грн
       expect(res.expenses.total.uah).toBe(74000);
@@ -393,8 +392,8 @@ describe('AnalyticsService', () => {
 
       // При передачі attendanceRate = 1.0 (100%):
       const resFull = await service.getGroupProfit(4, { attendanceRate: 1 });
-      expect(resFull.mealIncome.uah).toBe(16800);
-      expect(resFull.totalIncome.uah).toBe(45300);
+      expect(resFull.income.meal.uah).toBe(16800);
+      expect(resFull.income.total.uah).toBe(45300);
       expect(resFull.profit.uah).toBe(-28700);
     });
 
@@ -419,17 +418,17 @@ describe('AnalyticsService', () => {
 
       // Поточний місяць (листопад 2026, 21 день): 400 грн × 21 × 0,5 × 2 дитини = 8 400 грн
       const res = await service.getGroupProfit(4);
-      expect(res.mealIncome.uah).toBe(8400);
+      expect(res.income.meal.uah).toBe(8400);
       expect(res.calendar).toEqual({ month: '2026-11', workingDays: 21 });
 
       // Лютий 2026 — 20 днів: 400 × 20 × 0,5 × 2 = 8 000 грн
       const february = await service.getGroupProfit(4, { month: '2026-02' });
-      expect(february.mealIncome.uah).toBe(8000);
+      expect(february.income.meal.uah).toBe(8000);
       expect(february.calendar).toEqual({ month: '2026-02', workingDays: 20 });
 
       // query-параметр перекриває відвідуваність: 400 × 20 × 1 × 2 = 16 000 грн
       const resFull = await service.getGroupProfit(4, { month: '2026-02', attendanceRate: 1 });
-      expect(resFull.mealIncome.uah).toBe(16000);
+      expect(resFull.income.meal.uah).toBe(16000);
     });
 
     test('свята з налаштувань зменшують харчування групи', async () => {
@@ -448,7 +447,7 @@ describe('AnalyticsService', () => {
       const res = await service.getGroupProfit(4, { month: '2026-12' });
       expect(res.calendar).toEqual({ month: '2026-12', workingDays: 22 });
       // 400 грн × 22 × 0,8 = 7 040 грн
-      expect(res.mealIncome.uah).toBe(7040);
+      expect(res.income.meal.uah).toBe(7040);
     });
 
     test('враховує річну знижку 12% для дітей з paymentPlan: YEARLY', async () => {
@@ -472,11 +471,11 @@ describe('AnalyticsService', () => {
       const res = await service.getGroupProfit(5, { attendanceRate: 1 });
 
       expect(res.childrenCount).toBe(3);
-      expect(res.tuitionIncome.uah).toBe(38760);
-      expect(res.tuitionIncome.kopiykas).toBe(3876000);
+      expect(res.income.tuition.uah).toBe(38760);
+      expect(res.income.tuition.kopiykas).toBe(3876000);
       // 3 дитини 4-річки, 100% відвідуваність: 3 * (500 * 21) = 31 500 грн
-      expect(res.mealIncome.uah).toBe(31500);
-      expect(res.totalIncome.uah).toBe(70260);
+      expect(res.income.meal.uah).toBe(31500);
+      expect(res.income.total.uah).toBe(70260);
     });
   });
 
@@ -519,7 +518,6 @@ describe('AnalyticsService', () => {
       // Чистий профіт: -1 280 000 грн
       expect(res.profit.uah).toBe(-1280000);
       expect(res.profit.kopiykas).toBe(-128000000);
-      expect(res.netProfit.uah).toBe(-1280000);
     });
 
     test('розраховує загальний профіт садка з групами, дітьми та пільгами', async () => {
@@ -574,7 +572,6 @@ describe('AnalyticsService', () => {
       const res = await service.getTotalProfit();
 
       expect(res.activeChildrenCount).toBe(24);
-      expect(res.assignedChildrenCount).toBe(24);
       expect(res.groupsCount).toBe(2);
       expect(res.educatorsCount).toBe(2);
       expect(res.assistantsCount).toBe(2);
@@ -616,7 +613,6 @@ describe('AnalyticsService', () => {
         tuitionIncome: toMoney(15000000),
         mealIncome: toMoney(0),
         totalIncome: toMoney(15000000),
-        income: toMoney(15000000),
         expenses: toMoney(9000000), // 20k + 20k + 50k = 90k
         profit: toMoney(6000000), // 150k - 90k = 60k
       });
@@ -626,9 +622,9 @@ describe('AnalyticsService', () => {
       expect(res.rooms.total).toBe(20);
       expect(res.rooms.occupied).toBe(7); // 2 групи + 5 гуртків
       expect(res.rooms.vacant).toBe(13);
-      expect(res.rooms.cost.operating.uah).toBe(350000);
-      expect(res.rooms.cost.idle.uah).toBe(650000);
-      expect(res.rooms.cost.total.uah).toBe(1000000);
+      expect(res.expenses.operatingRoomsRent.uah).toBe(350000);
+      expect(res.expenses.idleRoomsRent.uah).toBe(650000);
+      expect(res.expenses.roomsRent.uah).toBe(1000000);
     });
 
     test('враховує річну знижку 12% для дітей з paymentPlan: YEARLY у загальному профіті', async () => {
@@ -706,7 +702,7 @@ describe('AnalyticsService', () => {
         service.getTotalProfit(query),
       ]);
       expect(totalRes.calendar).toEqual(groupRes.calendar);
-      expect(totalRes.groups[0].mealIncome).toEqual(groupRes.mealIncome);
+      expect(totalRes.groups[0].mealIncome).toEqual(groupRes.income.meal);
     });
 
     test('getTotalProfit використовує defaultRoomCost якщо кімната в групі не задана', async () => {
@@ -826,7 +822,7 @@ describe('AnalyticsService', () => {
       const res = await service.getTotalProfit();
 
       // Інваріант 1: Сума доходів груп = загальний дохід садка
-      const sumGroupsIncome = res.groups.reduce((acc, g) => acc + g.income.uah, 0);
+      const sumGroupsIncome = res.groups.reduce((acc, g) => acc + g.totalIncome.uah, 0);
       expect(res.income.total.uah).toBe(sumGroupsIncome);
 
       // Інваріант 2: Сума зарплат вихователів у групах = totalEducatorsSalary
@@ -1060,8 +1056,7 @@ describe('AnalyticsService', () => {
       const res = await service.calculateOptimalForecast(demand);
 
       expect(res.requestedDemand.totalChildren).toBe(0);
-      expect(res.topVariants[0].totalAdmitted).toBe(0);
-      expect(res.strategies.maxProfit.totalGroups).toBe(0);
+      expect(res.strategies.maxProfit.groupsCount).toBe(0);
       expect(res.marginalEconomics.roomsStatus.occupiedTotal).toBe(0);
     });
 
@@ -1070,7 +1065,7 @@ describe('AnalyticsService', () => {
       const demand = { 2: 1, 3: 0, 4: 0, 5: 0 };
       const res = await service.calculateOptimalForecast(demand);
 
-      expect(res.strategies.maxProfit.totalGroups).toBe(0);
+      expect(res.strategies.maxProfit.groupsCount).toBe(0);
       expect(res.marginalEconomics.waitlistAdvice.length).toBeGreaterThan(0);
       const advice2 = res.marginalEconomics.waitlistAdvice.find((a) => a.age === 2);
       expect(advice2).toBeDefined();
@@ -1350,7 +1345,6 @@ describe('AnalyticsService', () => {
       };
       const res = formatOptimalForecastMoney(raw);
       expect(res.recommended).toBeNull();
-      expect(res.topVariants).toEqual([]);
       expect(res.strategies).toEqual({});
       expect(res.marginalEconomics.marginalChild).toBeNull();
       expect(res.marginalEconomics.expansionAnalysis).toBeNull();
