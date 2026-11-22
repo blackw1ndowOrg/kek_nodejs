@@ -9,6 +9,7 @@ const {
   validateOptions,
   evaluateConfiguration,
   optimizeKindergartenCapacity,
+  resolveWorkingDays,
   MAX_KINDERGARTEN_CAPACITY,
   MAX_CHILDREN_PER_GROUP,
   MAX_GROUP_ROOMS,
@@ -760,6 +761,78 @@ describe('Domain: forecast (src/domain/forecast.js)', () => {
       expect(advice).toBeDefined();
       expect(advice.breakEvenChildrenCount).toBeNull();
       expect(advice.reason).toContain('не виходить на беззбитковість');
+    });
+  });
+
+  describe('робочі дні з календаря (resolveWorkingDays)', () => {
+    const HOLIDAYS = ['2026-05-01', '2026-05-08', '2026-12-25'];
+    const demand = { 2: 10, 3: 0, 4: 0, 5: 0 };
+    const oneGroup = { 2: 1, 3: 0, 4: 0, 5: 0 };
+
+    test('явне workingDays має пріоритет над місяцем', () => {
+      expect(resolveWorkingDays({ workingDays: 18, month: '2026-05', holidays: HOLIDAYS })).toBe(
+        18
+      );
+    });
+
+    test('місяць + свята: травень 2026 -> 19, листопад 2026 -> 21', () => {
+      expect(resolveWorkingDays({ month: '2026-05', holidays: HOLIDAYS })).toBe(19);
+      expect(resolveWorkingDays({ month: '2026-11', holidays: HOLIDAYS })).toBe(21);
+    });
+
+    test('місяць без списку свят — лише Пн–Пт', () => {
+      expect(resolveWorkingDays({ month: '2026-05' })).toBe(21);
+    });
+
+    test('ні workingDays, ні місяця — запасне значення 21', () => {
+      expect(resolveWorkingDays()).toBe(DEFAULT_WORKING_DAYS);
+    });
+
+    test('некоректний місяць -> 400', () => {
+      expect(() => validateOptions({ month: '2026-13' })).toThrow(BadRequestError);
+    });
+
+    test('харчування рахується за робочими днями місяця', () => {
+      const may = evaluateConfiguration(oneGroup, demand, { month: '2026-05', holidays: HOLIDAYS });
+      const explicit19 = evaluateConfiguration(oneGroup, demand, { workingDays: 19 });
+      const december = evaluateConfiguration(oneGroup, demand, {
+        month: '2026-12',
+        holidays: HOLIDAYS,
+      });
+      expect(may.mealIncome).toBe(explicit19.mealIncome);
+      expect(december.mealIncome).toBe(
+        evaluateConfiguration(oneGroup, demand, { workingDays: 22 }).mealIncome
+      );
+      expect(may.mealIncome).toBeLessThan(december.mealIncome);
+      expect(may.tuitionIncome).toBe(december.tuitionIncome);
+    });
+
+    test('місяць без робочих днів -> харчування 0', () => {
+      const allFebruary = Array.from(
+        { length: 28 },
+        (_, i) => `2026-02-${String(i + 1).padStart(2, '0')}`
+      );
+      const result = evaluateConfiguration(oneGroup, demand, {
+        month: '2026-02',
+        holidays: allFebruary,
+      });
+      expect(result.mealIncome).toBe(0);
+      expect(result.tuitionIncome).toBeGreaterThan(0);
+    });
+
+    test('optimizeKindergartenCapacity бере робочі дні з місяця', () => {
+      const fullDemand = { 2: 20, 3: 20, 4: 20, 5: 20 };
+      const may = optimizeKindergartenCapacity(fullDemand, {
+        month: '2026-05',
+        holidays: HOLIDAYS,
+      });
+      const nov = optimizeKindergartenCapacity(fullDemand, {
+        month: '2026-11',
+        holidays: HOLIDAYS,
+      });
+      expect(may.recommended.totalAdmitted).toBe(nov.recommended.totalAdmitted);
+      expect(may.recommended.mealIncome).toBeGreaterThan(0);
+      expect(may.recommended.mealIncome).toBeLessThan(nov.recommended.mealIncome);
     });
   });
 });

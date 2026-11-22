@@ -2,6 +2,7 @@ const { BadRequestError } = require('../errors/AppError');
 const { ErrorCodes } = require('../errors/errorCodes');
 const { tuitionMonthly, mealMonthly } = require('./pricing');
 const { educatorSalary, assistantSalary, clubTeacherSalary, managerSalary } = require('./salary');
+const { workingDaysInMonth } = require('./calendar');
 
 const MAX_KINDERGARTEN_CAPACITY = 300;
 const MAX_CHILDREN_PER_GROUP = 20;
@@ -21,8 +22,28 @@ const TEACHER_DAILY_LESSONS = 9; // 9 занять по 30 хв на день
 const WORK_DAYS_PER_WEEK = 5;
 const TEACHER_WEEKLY_CAPACITY = TEACHER_DAILY_LESSONS * WORK_DAYS_PER_WEEK; // 45 занять на тиждень
 const MAX_GROUPS_PER_TEACHER = Math.floor(TEACHER_WEEKLY_CAPACITY / LESSONS_PER_WEEK_PER_GROUP); // 15 груп
+// Запасне значення, лише якщо не передано ні workingDays, ні month (див. resolveWorkingDays)
 const DEFAULT_WORKING_DAYS = 21;
 const DEFAULT_ATTENDANCE_RATE = 0.8; // Коефіцієнт фактичної відвідуваності з урахуванням хвороб дітей (80%)
+
+/**
+ * Робочі дні місяця прогнозу:
+ * - options.workingDays — якщо передано явно;
+ * - інакше календар місяця options.month ('YYYY-MM'): Пн–Пт мінус options.holidays;
+ * - інакше DEFAULT_WORKING_DAYS.
+ *
+ * @param {Object} [options={}]
+ * @returns {number}
+ */
+function resolveWorkingDays(options = {}) {
+  if (options.workingDays !== undefined) {
+    return options.workingDays;
+  }
+  if (options.month !== undefined) {
+    return workingDaysInMonth(options.month, options.holidays ?? []);
+  }
+  return DEFAULT_WORKING_DAYS;
+}
 
 /**
  * Валідує параметри конфігурації (options).
@@ -35,7 +56,7 @@ function validateOptions(options = {}) {
     options.maxChildrenInGroup ?? options.maxGroupSize ?? MAX_CHILDREN_PER_GROUP;
   const totalRoomsCount = options.totalRoomsCount ?? options.roomsCount ?? DEFAULT_TOTAL_ROOMS;
   const clubRoomsCount = options.clubRoomsCount ?? DEFAULT_CLUB_ROOMS;
-  const workingDays = options.workingDays ?? DEFAULT_WORKING_DAYS;
+  const workingDays = resolveWorkingDays(options);
   const attendanceRate = options.attendanceRate ?? DEFAULT_ATTENDANCE_RATE;
 
   if (options.assistantExtra !== undefined) {
@@ -349,10 +370,10 @@ function evaluateConfiguration(gVec, demand, options = {}, mode = 'standard') {
     maxChildrenInGroup = options.maxGroupSize ?? MAX_CHILDREN_PER_GROUP,
     mealBasePerDay = 30000,
     mealPerExtraYear = 10000,
-    workingDays = DEFAULT_WORKING_DAYS,
     managersCount = DEFAULT_MANAGERS,
     attendanceRate = DEFAULT_ATTENDANCE_RATE,
   } = options;
+  const workingDays = resolveWorkingDays(options);
 
   let totalTuitionIncome = 0;
   let totalMealIncome = 0;
@@ -515,10 +536,10 @@ function optimizeKindergartenCapacity(rawDemand, options = {}) {
     clubSalary = 4000000,
     mealBasePerDay = 30000,
     mealPerExtraYear = 10000,
-    workingDays = DEFAULT_WORKING_DAYS,
     maxChildrenInGroup = options.maxGroupSize ?? MAX_CHILDREN_PER_GROUP,
     attendanceRate = DEFAULT_ATTENDANCE_RATE,
   } = options;
+  const workingDays = resolveWorkingDays(options);
 
   const maxGroupRooms = Math.max(0, totalRoomsCount - clubRoomsCount);
   const totalDemand = demand[2] + demand[3] + demand[4] + demand[5];
@@ -996,6 +1017,7 @@ module.exports = {
   evaluateConfiguration,
   optimizeKindergartenCapacity,
   validateOptions,
+  resolveWorkingDays,
   MAX_KINDERGARTEN_CAPACITY,
   MAX_CHILDREN_PER_GROUP,
   MAX_GROUP_ROOMS,
