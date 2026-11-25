@@ -12,17 +12,18 @@ COPY prisma ./prisma/
 # Install all dependencies (including devDependencies needed for tests and development)
 RUN npm ci
 
+# Copy entrypoint script to /usr/local/bin to prevent host volume mount overwrites
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN sed -i -e 's/\r$//' /usr/local/bin/docker-entrypoint.sh && chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Copy project source files
 COPY . .
 
 # Generate Prisma Client with Linux musl engine
 RUN npx prisma generate
 
-# Normalize line endings and set permissions for entrypoint script
-RUN sed -i -e 's/\r$//' /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
-
 EXPOSE 3000
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 CMD ["npm", "start"]
